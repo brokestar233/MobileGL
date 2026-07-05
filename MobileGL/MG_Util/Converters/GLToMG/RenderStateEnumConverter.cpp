@@ -223,6 +223,8 @@ namespace MobileGL {
 
         CapabilityInput ConvertGLEnumToCapabilityInput(GLenum v) {
             switch (v) {
+            case GL_ALPHA_TEST:
+                return CapabilityInput::AlphaTest;
             case GL_BLEND:
                 return CapabilityInput::Blend;
             case GL_CLIP_DISTANCE0:

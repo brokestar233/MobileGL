@@ -143,6 +143,7 @@ namespace MobileGL {
     };
 
     enum class CapabilityInput {
+        AlphaTest,
         Blend,
         ClipDistance0,
         ClipDistance1,
@@ -229,6 +230,9 @@ namespace MobileGL {
         Bool DepthTestEnabled = false;
         DepthTestFunc DepthFunc = DepthTestFunc::Less;
         Bool DepthMask = true;
+        Bool AlphaTestEnabled = false;
+        DepthTestFunc AlphaTestFunc = DepthTestFunc::Always;
+        Float AlphaTestRef = 0.0f;
 
         // Color Mask
         BoolVec4 ColorMask = BoolVec4(true, true, true, true);
@@ -320,6 +324,9 @@ namespace MobileGL {
                 DepthTestFunc GetDepthFunc() const;
                 void SetDepthMask(Bool flag);
                 Bool GetDepthMask() const;
+                void SetAlphaFunc(DepthTestFunc func, Float ref);
+                DepthTestFunc GetAlphaFunc() const;
+                Float GetAlphaRef() const;
                 void SetStencilFunc(StencilFace face, DepthTestFunc func, Int ref, Uint32 mask);
                 void SetStencilMask(StencilFace face, Uint32 mask);
                 void SetStencilOp(StencilFace face, StencilOperation fail, StencilOperation depthFail,

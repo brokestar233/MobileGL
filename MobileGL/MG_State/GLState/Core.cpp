@@ -393,6 +393,18 @@ namespace MobileGL::MG_State {
             return m_renderState.GetDepthMask();
         }
 
+        void GLContext::SetAlphaFunc(DepthTestFunc func, Float ref) {
+            m_renderState.SetAlphaFunc(func, ref);
+        }
+
+        DepthTestFunc GLContext::GetAlphaFunc() const {
+            return m_renderState.GetAlphaFunc();
+        }
+
+        Float GLContext::GetAlphaRef() const {
+            return m_renderState.GetAlphaRef();
+        }
+
         void GLContext::SetStencilFunc(StencilFace face, DepthTestFunc func, Int ref, Uint32 mask) {
             m_renderState.SetStencilFunc(face, func, ref, mask);
         }

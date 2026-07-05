@@ -613,6 +613,7 @@ namespace MobileGL {
             GL_FUNC_TYPEDEF(void, glGetQueryObjecti64vEXT, GLuint id, GLenum pname, GLint64* params)
             GL_FUNC_TYPEDEF(void, glBindFragDataLocationEXT, GLuint program, GLuint colorNumber, const GLchar* name)
             GL_FUNC_TYPEDEF(void*, glMapBufferOES, GLenum target, GLenum access)
+            GL_FUNC_TYPEDEF(void, glAlphaFuncQCOM, GLenum func, GLclampf ref)
 
             GL_FUNC_TYPEDEF(void, glMultiDrawArraysIndirectEXT, GLenum mode, const void* indirect, GLsizei drawcount,
                             GLsizei stride)
@@ -1002,6 +1003,7 @@ namespace MobileGL {
             GL_FUNC_DECL(glGetQueryObjecti64vEXT)
             GL_FUNC_DECL(glBindFragDataLocationEXT)
             GL_FUNC_DECL(glMapBufferOES)
+            GL_FUNC_DECL(glAlphaFuncQCOM)
 
             GL_FUNC_DECL(glMultiDrawArraysIndirectEXT)
             GL_FUNC_DECL(glMultiDrawElementsIndirectEXT)

@@ -29,6 +29,9 @@
 namespace MobileGL::MG_Backend::DirectGLES {
     constexpr Bool PREFER_MAP_BUFFER_RANGE_FOR_BUFFER_SYNC = false;
     constexpr const char* BASE_INSTANCE_UNIFORM_NAME = "mg_BaseInstance";
+    constexpr const char* ALPHA_TEST_ENABLED_UNIFORM_NAME = "mg_AlphaTestEnabled";
+    constexpr const char* ALPHA_TEST_FUNC_UNIFORM_NAME = "mg_AlphaTestFunc";
+    constexpr const char* ALPHA_TEST_REF_UNIFORM_NAME = "mg_AlphaTestRef";
 
     static Uint ResolveBackendEsslVersion() {
         const auto& version = g_GLESCapabilities.GLESVersion;
@@ -326,6 +329,40 @@ namespace MobileGL::MG_Backend::DirectGLES {
             return true;
         }
 
+        Bool ComputeClientSideElementRange(GLsizei count, GLenum type, const void* indices, GLuint& outMaxIndex) {
+            if (count <= 0 || indices == nullptr) {
+                return false;
+            }
+
+            outMaxIndex = 0;
+            switch (type) {
+            case GL_UNSIGNED_BYTE: {
+                const auto* typedIndices = reinterpret_cast<const GLubyte*>(indices);
+                for (GLsizei i = 0; i < count; ++i) {
+                    outMaxIndex = std::max(outMaxIndex, static_cast<GLuint>(typedIndices[i]));
+                }
+                return true;
+            }
+            case GL_UNSIGNED_SHORT: {
+                const auto* typedIndices = reinterpret_cast<const GLushort*>(indices);
+                for (GLsizei i = 0; i < count; ++i) {
+                    outMaxIndex = std::max(outMaxIndex, static_cast<GLuint>(typedIndices[i]));
+                }
+                return true;
+            }
+            case GL_UNSIGNED_INT: {
+                const auto* typedIndices = reinterpret_cast<const GLuint*>(indices);
+                for (GLsizei i = 0; i < count; ++i) {
+                    outMaxIndex = std::max(outMaxIndex, typedIndices[i]);
+                }
+                return true;
+            }
+            default:
+                MGLOG_W("Unsupported client-side DrawElements index type 0x%x for attribute upload.", type);
+                return false;
+            }
+        }
+
         void BackendVertexArrayObject::SyncToBackend(
             const SharedPtr<MG_State::GLState::VertexArrayObject>& stateVAOObject) {
 #ifdef TRACY_ENABLE
@@ -456,6 +493,50 @@ namespace MobileGL::MG_Backend::DirectGLES {
             }
 
             BufferImpl::g_boundVertexBufferObject = nullptr;
+        }
+
+        void BackendVertexArrayObject::SyncClientSideAttributesForDrawElements(
+            const SharedPtr<MG_State::GLState::VertexArrayObject>& stateVAOObject, GLsizei count, GLenum type,
+            const void* indices) {
+            if (!stateVAOObject || count <= 0) {
+                return;
+            }
+
+            if (stateVAOObject->GetIndexBufferBindingSlot().GetBoundObject() != nullptr) {
+                return;
+            }
+
+            GLuint maxIndex = 0;
+            if (!ComputeClientSideElementRange(count, type, indices, maxIndex)) {
+                return;
+            }
+
+            SyncClientSideAttributesForDrawArrays(
+                stateVAOObject, 0, static_cast<GLsizei>(maxIndex + 1));
+        }
+
+        void BackendVertexArrayObject::SyncCurrentVertexAttributes(
+            const SharedPtr<MG_State::GLState::VertexArrayObject>& stateVAOObject) {
+            if (!stateVAOObject) {
+                return;
+            }
+
+            Bind();
+
+            const auto& allAttributes = stateVAOObject->GetAllAttributes();
+            for (Uint attribIndex = 0; attribIndex < allAttributes.size(); ++attribIndex) {
+                const auto& attrib = allAttributes[attribIndex];
+                if (attrib.Enabled) {
+                    continue;
+                }
+
+                const auto& current = MG_State::pGLContext->GetCurrentVertexAttribute(attribIndex);
+                if (attrib.IsInteger) {
+                    g_GLESFuncs.glVertexAttribI4iv(attribIndex, current.intValue.data());
+                } else {
+                    g_GLESFuncs.glVertexAttrib4fv(attribIndex, current.floatValue.data());
+                }
+            }
         }
 
         StateBackendObjectRegistry<MG_State::GLState::VertexArrayObject, BackendVertexArrayObject>
@@ -1687,6 +1768,9 @@ namespace MobileGL::MG_Backend::DirectGLES {
                 source = ForceFlatIntegerVaryings(source, glShaderType);
                 source = EmulateBaseInstanceInVertexShader(std::move(source), glShaderType);
                 source = ForceSupporterOutput(source);
+                if (g_GLESFuncs.glAlphaFuncQCOM == nullptr) {
+                    source = InjectGenericAlphaTestCompat(std::move(source), glShaderType);
+                }
                 source = ClampNormFallbackOutputs(std::move(source), glShaderType,
                                                   m_snormFallbackClampOutputMask,
                                                   m_unormFallbackClampOutputMask);
@@ -1741,6 +1825,12 @@ namespace MobileGL::MG_Backend::DirectGLES {
             }
             m_baseInstanceUniformLocation = g_GLESFuncs.glGetUniformLocation(m_backendProgramId,
                                                                              BASE_INSTANCE_UNIFORM_NAME);
+            m_alphaTestEnabledUniformLocation = g_GLESFuncs.glGetUniformLocation(m_backendProgramId,
+                                                                                 ALPHA_TEST_ENABLED_UNIFORM_NAME);
+            m_alphaTestFuncUniformLocation = g_GLESFuncs.glGetUniformLocation(m_backendProgramId,
+                                                                              ALPHA_TEST_FUNC_UNIFORM_NAME);
+            m_alphaTestRefUniformLocation = g_GLESFuncs.glGetUniformLocation(m_backendProgramId,
+                                                                             ALPHA_TEST_REF_UNIFORM_NAME);
 
             // Create global UBO
             if (stateProgramObject->GetUBOSize() > 0) {
@@ -1769,6 +1859,18 @@ namespace MobileGL::MG_Backend::DirectGLES {
                 return;
             }
             g_GLESFuncs.glUniform1i(m_baseInstanceUniformLocation, static_cast<GLint>(baseInstance));
+        }
+
+        void BackendProgramObjectImpl::SetAlphaTestState(Bool enabled, GLenum func, Float ref) const {
+            if (m_alphaTestEnabledUniformLocation >= 0) {
+                g_GLESFuncs.glUniform1i(m_alphaTestEnabledUniformLocation, enabled ? 1 : 0);
+            }
+            if (m_alphaTestFuncUniformLocation >= 0) {
+                g_GLESFuncs.glUniform1i(m_alphaTestFuncUniformLocation, static_cast<GLint>(func));
+            }
+            if (m_alphaTestRefUniformLocation >= 0) {
+                g_GLESFuncs.glUniform1f(m_alphaTestRefUniformLocation, ref);
+            }
         }
     } // namespace PrgramImpl
 

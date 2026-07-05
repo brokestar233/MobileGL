@@ -96,6 +96,7 @@ namespace MobileGL {
         break;
 
                 switch (cap) {
+                    SET_CAPABILITY(AlphaTest, enabled);
                     SET_CAPABILITY(ColorLogicOp, enabled);
                     SET_CAPABILITY(DebugOutput, enabled);
                     SET_CAPABILITY(DebugOutputSynchronous, enabled);
@@ -139,6 +140,7 @@ namespace MobileGL {
     case CapabilityInput::capability:                                                                                  \
         return m_parameters.capability##Enabled;
                 switch (cap) {
+                    RETURN_CAPABILITY(AlphaTest);
                     RETURN_CAPABILITY(ColorLogicOp);
                     RETURN_CAPABILITY(DebugOutput);
                     RETURN_CAPABILITY(DebugOutputSynchronous);
@@ -328,6 +330,25 @@ namespace MobileGL {
 
             Bool RenderState::GetDepthMask() const {
                 return m_parameters.DepthMask;
+            }
+
+            void RenderState::SetAlphaFunc(DepthTestFunc func, Float ref) {
+                const Float clampedRef = std::clamp(ref, 0.0f, 1.0f);
+                if (m_parameters.AlphaTestFunc == func && m_parameters.AlphaTestRef == clampedRef) {
+                    return;
+                }
+
+                m_parameters.AlphaTestFunc = func;
+                m_parameters.AlphaTestRef = clampedRef;
+                ++m_version;
+            }
+
+            DepthTestFunc RenderState::GetAlphaFunc() const {
+                return m_parameters.AlphaTestFunc;
+            }
+
+            Float RenderState::GetAlphaRef() const {
+                return m_parameters.AlphaTestRef;
             }
 
             void RenderState::SetStencilFunc(StencilFace face, DepthTestFunc func, Int ref, Uint32 mask) {

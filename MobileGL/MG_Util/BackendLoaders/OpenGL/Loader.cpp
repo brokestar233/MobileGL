@@ -452,6 +452,7 @@ namespace MobileGL::MG_Util::BackendLoader {
             INIT_GLES_FUNC(glGetQueryObjecti64vEXT)
             INIT_GLES_FUNC(glBindFragDataLocationEXT)
             INIT_GLES_FUNC(glMapBufferOES)
+            INIT_GLES_FUNC(glAlphaFuncQCOM)
             INIT_GLES_FUNC(glMultiDrawArraysIndirectEXT)
             INIT_GLES_FUNC(glMultiDrawElementsIndirectEXT)
             INIT_GLES_FUNC(glMultiDrawElementsBaseVertexEXT)

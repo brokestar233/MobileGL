@@ -38,6 +38,7 @@ namespace MobileGL::MG_Impl::GLImpl {
     void LineWidth(GLfloat width);
     GLboolean IsEnabledi(GLenum target, GLuint index);
     GLboolean IsEnabled(GLenum cap);
+    void AlphaFunc(GLenum func, GLclampf ref);
     void Hint(GLenum target, GLenum mode);
     void FrontFace(GLenum mode);
     void ProvokingVertex(GLenum mode);

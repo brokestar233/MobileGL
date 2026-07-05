@@ -18,9 +18,41 @@
 #include <MG_Util/Converters/GLToStr/GLEnumConverter.h>
 #include <MG_Util/Converters/MGToGL/TextureEnumConverter.h>
 #include <MG_Util/Converters/MGToGL/FramebufferEnumConverter.h>
+#include <regex>
 
 namespace MobileGL::MG_Backend::DirectGLES {
     namespace {
+        SizeT FindAfterVersionAndPrecisionDirectives(const String& source) {
+            SizeT pos = 0;
+            const SizeT versionPos = source.find("#version");
+            if (versionPos != String::npos) {
+                const SizeT versionLineEnd = source.find('\n', versionPos);
+                pos = versionLineEnd == String::npos ? source.size() : versionLineEnd + 1;
+            }
+
+            while (pos < source.size()) {
+                SizeT lineEnd = source.find('\n', pos);
+                const bool hasLineBreak = lineEnd != String::npos;
+                if (!hasLineBreak) {
+                    lineEnd = source.size();
+                }
+
+                SizeT probe = pos;
+                while (probe < lineEnd && std::isspace(static_cast<unsigned char>(source[probe]))) {
+                    ++probe;
+                }
+
+                if (probe + 10 <= lineEnd && source.compare(probe, 10, "precision ") == 0) {
+                    pos = lineEnd + (hasLineBreak ? 1 : 0);
+                    continue;
+                }
+
+                break;
+            }
+
+            return pos;
+        }
+
         Flags<PixelFormatNormalizeOptionBit> GetForcedPixelFormatNormalizeOptions() {
             Flags<PixelFormatNormalizeOptionBit> options;
             if (g_GLESCapabilities.GLESRendererString.find("ANGLE") != String::npos) {
@@ -312,6 +344,128 @@ namespace MobileGL::MG_Backend::DirectGLES {
             static std::regex bindingRegex2(R"(layout\s*\(\s*binding\s*=\s*\d+\s*,)");
             result = std::regex_replace(result, bindingRegex2, "layout(");
             return result;
+        }
+
+        String InjectGenericAlphaTestCompat(String glslCode, GLenum shaderType) {
+#ifdef TRACY_ENABLE
+            ZoneScopedC(TRACY_ZONECOLOR_BACKEND);
+#endif
+            if (shaderType != GL_FRAGMENT_SHADER) {
+                return glslCode;
+            }
+            if (glslCode.find("mg_AlphaTestEnabled") != String::npos) {
+                return glslCode;
+            }
+            if (glslCode.find("discard;") != String::npos) {
+                return glslCode;
+            }
+
+            static const std::regex outputRegex(
+                R"(^(\s*(?:layout\s*\([^)]+\)\s*)?out\s+(?:(?:highp|mediump|lowp)\s+)?vec4\s+)([A-Za-z_][A-Za-z0-9_]*)(?:\s*\[\s*(\d+)\s*\])?\s*;\s*$)");
+
+            SizeT lineStart = 0;
+            String primaryOutputName;
+            String primaryOutputExpr;
+            while (lineStart < glslCode.size()) {
+                SizeT lineEnd = glslCode.find('\n', lineStart);
+                const bool hasLineBreak = lineEnd != String::npos;
+                if (!hasLineBreak) {
+                    lineEnd = glslCode.size();
+                }
+
+                const String line = glslCode.substr(lineStart, lineEnd - lineStart);
+                std::smatch match;
+                if (std::regex_match(line, match, outputRegex)) {
+                    primaryOutputName = match[2].str();
+                    const String arraySizeStr = match[3].matched ? match[3].str() : String();
+                    primaryOutputExpr = primaryOutputName;
+                    if (!arraySizeStr.empty()) {
+                        primaryOutputExpr += "[0]";
+                    }
+                    break;
+                }
+
+                lineStart = lineEnd + (hasLineBreak ? 1 : 0);
+            }
+
+            if (primaryOutputExpr.empty() && glslCode.find("gl_FragColor") != String::npos) {
+                primaryOutputName = "gl_FragColor";
+                primaryOutputExpr = "gl_FragColor";
+            }
+
+            if (primaryOutputExpr.empty()) {
+                return glslCode;
+            }
+
+            const SizeT injectPos = FindAfterVersionAndPrecisionDirectives(glslCode);
+
+            glslCode.insert(
+                injectPos,
+                "uniform int mg_AlphaTestEnabled;\n"
+                "uniform int mg_AlphaTestFunc;\n"
+                "uniform float mg_AlphaTestRef;\n"
+                "bool mg_PassesAlphaTest(float alpha) {\n"
+                "    const float mg_AlphaEpsilon = 0.001;\n"
+                "    if (mg_AlphaTestEnabled == 0) return true;\n"
+                "    if (mg_AlphaTestFunc == 512) return false;\n"
+                "    if (mg_AlphaTestFunc == 513) return alpha < mg_AlphaTestRef;\n"
+                "    if (mg_AlphaTestFunc == 514) return abs(alpha - mg_AlphaTestRef) < mg_AlphaEpsilon;\n"
+                "    if (mg_AlphaTestFunc == 515) return alpha <= mg_AlphaTestRef;\n"
+                "    if (mg_AlphaTestFunc == 516) return alpha > mg_AlphaTestRef;\n"
+                "    if (mg_AlphaTestFunc == 517) return abs(alpha - mg_AlphaTestRef) >= mg_AlphaEpsilon;\n"
+                "    if (mg_AlphaTestFunc == 518) return alpha >= mg_AlphaTestRef;\n"
+                "    return true;\n"
+                "}\n");
+
+            const SizeT mainPos = glslCode.find("void main");
+            if (mainPos == String::npos) {
+                return glslCode;
+            }
+            const SizeT originalBodyStart = glslCode.find('{', mainPos);
+            if (originalBodyStart == String::npos) {
+                return glslCode;
+            }
+            int originalDepth = 0;
+            SizeT originalBodyClose = String::npos;
+            for (SizeT pos = originalBodyStart; pos < glslCode.size(); ++pos) {
+                if (glslCode[pos] == '{') {
+                    ++originalDepth;
+                } else if (glslCode[pos] == '}') {
+                    --originalDepth;
+                    if (originalDepth == 0) {
+                        originalBodyClose = pos;
+                        break;
+                    }
+                }
+            }
+            if (originalBodyClose == String::npos) {
+                return glslCode;
+            }
+            const String originalBody = glslCode.substr(originalBodyStart + 1, originalBodyClose - originalBodyStart - 1);
+            const SizeT firstNonWs = originalBody.find_first_not_of(" \t\r\n");
+            if (firstNonWs == String::npos) {
+                return glslCode;
+            }
+            const Bool writesPrimaryOutput =
+                originalBody.find(primaryOutputName + " =") != String::npos ||
+                originalBody.find(primaryOutputName + "=") != String::npos ||
+                originalBody.find(primaryOutputName + "[") != String::npos;
+            if (primaryOutputName != "gl_FragColor" && !writesPrimaryOutput) {
+                return glslCode;
+            }
+            const SizeT mainNamePos = glslCode.find("main", mainPos);
+            if (mainNamePos == String::npos) {
+                return glslCode;
+            }
+            glslCode.replace(mainNamePos, 4, "mg_user_main");
+
+            glslCode += "\nvoid main() {\n";
+            glslCode += "    mg_user_main();\n";
+            glslCode += "    if (!mg_PassesAlphaTest(" + primaryOutputExpr + ".a)) {\n";
+            glslCode += "        discard;\n";
+            glslCode += "    }\n";
+            glslCode += "}\n";
+            return glslCode;
         }
     } // namespace PrgramImpl
 

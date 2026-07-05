@@ -301,6 +301,20 @@ namespace MobileGL::MG_Impl::GLImpl {
         return MG_State::pGLContext->IsCapabilityEnabled(capInput) ? GL_TRUE : GL_FALSE;
     }
 
+    void AlphaFunc_State(GLenum func, GLclampf ref) {
+        const DepthTestFunc alphaFunc = MG_Util::ConvertGLEnumToDepthTestFunc(func);
+        if (alphaFunc == DepthTestFunc::Unknown) {
+            MG_State::pGLContext->RecordError(
+                ErrorCode::InvalidEnum,
+                MakeUnique<GenericErrorInfo>("MG_Impl/GLImpl", "AlphaFunc_State",
+                                             "Alpha function enum " + MG_Util::ConvertGLEnumToString(func) +
+                                                 " is not supported."));
+            return;
+        }
+
+        MG_State::pGLContext->SetAlphaFunc(alphaFunc, ClampUnitFloat(ref));
+    }
+
     void Hint_State(GLenum target, GLenum mode) {
         // TODO: implement
     }
@@ -690,6 +704,10 @@ namespace MobileGL::MG_Impl::GLImpl {
 
     GLboolean IsEnabled(GLenum cap) {
         return IsEnabled_State(cap);
+    }
+
+    void AlphaFunc(GLenum func, GLclampf ref) {
+        AlphaFunc_State(func, ref);
     }
 
     void Hint(GLenum target, GLenum mode) {

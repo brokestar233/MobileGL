@@ -145,6 +145,11 @@ namespace MobileGL::MG_Backend::DirectGLES {
             void SyncToBackend(const SharedPtr<MG_State::GLState::VertexArrayObject>& stateVAOObject);
             void SyncClientSideAttributesForDrawArrays(
                 const SharedPtr<MG_State::GLState::VertexArrayObject>& stateVAOObject, GLint first, GLsizei count);
+            void SyncClientSideAttributesForDrawElements(
+                const SharedPtr<MG_State::GLState::VertexArrayObject>& stateVAOObject, GLsizei count, GLenum type,
+                const void* indices);
+            void SyncCurrentVertexAttributes(
+                const SharedPtr<MG_State::GLState::VertexArrayObject>& stateVAOObject);
             Uint GetBackendVertexArrayId() const { return m_backendVAOId; }
             void Bind() const;
 
@@ -282,6 +287,7 @@ namespace MobileGL::MG_Backend::DirectGLES {
             void SyncToBackend(const SharedPtr<MG_State::GLState::ProgramObject>& stateProgramObject);
             void Use() const;
             void SetBaseInstance(Uint32 baseInstance) const;
+            void SetAlphaTestState(Bool enabled, GLenum func, Float ref) const;
             Uint GetBackendProgramId() const { return m_backendProgramId; }
             Uint GetBackendGlobalUBOId() const { return m_backendGlobalUBOId; }
             Uint32 GetSnormFallbackClampOutputMask() const { return m_snormFallbackClampOutputMask; }
@@ -291,6 +297,9 @@ namespace MobileGL::MG_Backend::DirectGLES {
             Uint m_backendProgramId = 0;
             Uint m_backendGlobalUBOId = 0;
             Int m_baseInstanceUniformLocation = -1;
+            Int m_alphaTestEnabledUniformLocation = -1;
+            Int m_alphaTestFuncUniformLocation = -1;
+            Int m_alphaTestRefUniformLocation = -1;
             Uint32 m_snormFallbackClampOutputMask = 0;
             Uint32 m_unormFallbackClampOutputMask = 0;
             Bool m_isInitialized = false;

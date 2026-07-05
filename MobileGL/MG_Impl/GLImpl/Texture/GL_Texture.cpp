@@ -2530,6 +2530,20 @@ namespace MobileGL::MG_Impl::GLImpl {
             return;
         }
 
+        // LWJGL feeds GLuint names through signed Java ints. A common sentinel like `-1`
+        // therefore reaches native code as a huge wrapped GLuint (for example 0xFFFFFFFF),
+        // which is not a legitimate generated texture name in this environment and would
+        // otherwise explode the sparse name table.
+        if (texture > static_cast<GLuint>(std::numeric_limits<GLint>::max())) {
+            MGLOG_W("BindTexture_State rejected suspicious wrapped texture name: 0x%X on unit %d", texture, activeUnit);
+            MG_State::pGLContext->RecordError(
+                ErrorCode::InvalidValue,
+                MakeUnique<GenericErrorInfo>(
+                    "MG_Impl/GLImpl", "BindTexture_State",
+                    std::format("Suspicious wrapped texture name 0x{:X}; likely a negative Java-side sentinel", texture)));
+            return;
+        }
+
         // Some desktop-side helper code saves GL_ACTIVE_TEXTURE and later feeds it back into glBindTexture
         // as if it were a texture name. Treating that as a no-op preserves the previous "invalid bind does not
         // change texture state" behavior, but avoids poisoning the error state every frame.

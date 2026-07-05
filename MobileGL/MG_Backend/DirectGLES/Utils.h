@@ -52,6 +52,7 @@ namespace MobileGL::MG_Backend::DirectGLES {
                                         Uint32 unormOutputMask);
         String ForceFlatIntegerVaryings(const String& glslCode, GLenum shaderType);
         String RemoveLayoutBinding(const String& glslCode);
+        String InjectGenericAlphaTestCompat(String glslCode, GLenum shaderType);
     } // namespace PrgramImpl
 
     namespace Utils {

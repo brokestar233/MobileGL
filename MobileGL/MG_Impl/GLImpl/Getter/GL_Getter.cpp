@@ -521,6 +521,9 @@ namespace MobileGL::MG_Impl::GLImpl {
         case GL_DEPTH_CLEAR_VALUE:
             params[0] = MG_State::pGLContext->GetClearDepth();
             return;
+        case GL_ALPHA_TEST_REF:
+            params[0] = MG_State::pGLContext->GetAlphaRef();
+            return;
         case GL_ALIASED_LINE_WIDTH_RANGE: {
             const auto& dynamicParameters = MG_Backend::pActiveBackendObject->GetDynamicParameters();
             params[0] = dynamicParameters.AliasedLineWidthRangeMin;
@@ -847,6 +850,15 @@ namespace MobileGL::MG_Impl::GLImpl {
         }
         case GL_BLEND:
             *params = MG_State::pGLContext->IsCapabilityEnabled(CapabilityInput::Blend) ? GL_TRUE : GL_FALSE;
+            return;
+        case GL_ALPHA_TEST:
+            *params = MG_State::pGLContext->IsCapabilityEnabled(CapabilityInput::AlphaTest) ? GL_TRUE : GL_FALSE;
+            return;
+        case GL_ALPHA_TEST_FUNC:
+            *params = static_cast<GLint>(MG_Util::ConvertDepthTestFuncToGLEnum(MG_State::pGLContext->GetAlphaFunc()));
+            return;
+        case GL_ALPHA_TEST_REF:
+            *params = static_cast<GLint>(MG_State::pGLContext->GetAlphaRef());
             return;
         case GL_BLEND_COLOR: {
             const FloatVec4& blendColor = MG_State::pGLContext->GetBlendColor();

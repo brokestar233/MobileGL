@@ -37,6 +37,10 @@
 #endif
 
 namespace MobileGL::MG_Backend::DirectGLES {
+#ifndef GL_ALPHA_TEST_QCOM
+#define GL_ALPHA_TEST_QCOM 0x0BC0
+#endif
+
     MG_External::EGLFunctionsTable g_EGLFuncs;
     MG_External::GLESFunctionsTable g_GLESFuncs;
     MG_External::GLESCapabilities g_GLESCapabilities;
@@ -501,6 +505,22 @@ namespace MobileGL::MG_Backend::DirectGLES {
 
 #undef SYNC_CAPABILITY
 
+            if (g_GLESFuncs.glAlphaFuncQCOM != nullptr &&
+                parameters.AlphaTestEnabled != g_syncedRenderStateParameters.AlphaTestEnabled) {
+                if (parameters.AlphaTestEnabled) {
+                    g_GLESFuncs.glEnable(GL_ALPHA_TEST_QCOM);
+                } else {
+                    g_GLESFuncs.glDisable(GL_ALPHA_TEST_QCOM);
+                }
+            }
+
+            if (g_GLESFuncs.glAlphaFuncQCOM != nullptr &&
+                (parameters.AlphaTestFunc != g_syncedRenderStateParameters.AlphaTestFunc ||
+                 parameters.AlphaTestRef != g_syncedRenderStateParameters.AlphaTestRef)) {
+                g_GLESFuncs.glAlphaFuncQCOM(MG_Util::ConvertDepthTestFuncToGLEnum(parameters.AlphaTestFunc),
+                                            parameters.AlphaTestRef);
+            }
+
             const auto& ToGLBoolean = [](Bool b) -> GLboolean { return b ? GL_TRUE : GL_FALSE; };
 
             { // Blend State
@@ -886,6 +906,10 @@ namespace MobileGL::MG_Backend::DirectGLES {
             const auto& backendProgramIt = PrgramImpl::g_backendProgramObjects.find(currentProgram.get());
             if (backendProgramIt != PrgramImpl::g_backendProgramObjects.end()) {
                 backendProgramIt->second->Use();
+                backendProgramIt->second->SetAlphaTestState(
+                    MG_State::pGLContext->IsCapabilityEnabled(CapabilityInput::AlphaTest),
+                    MG_Util::ConvertDepthTestFuncToGLEnum(MG_State::pGLContext->GetAlphaFunc()),
+                    MG_State::pGLContext->GetAlphaRef());
                 auto backendProgramId = backendProgramIt->second->GetBackendProgramId();
 
                 // Global UBO
@@ -1082,6 +1106,14 @@ namespace MobileGL::MG_Backend::DirectGLES {
 #endif
         DrawSyncBit syncBit = DrawSyncBit::IndexBuffer;
         PrepareForDraw(syncBit);
+        const auto& currentVAO = MG_State::pGLContext->GetBoundVertexArray();
+        if (currentVAO) {
+            const auto& backendVAOIt = VertexArrayImpl::g_backendVertexArrayObjects.find(currentVAO.get());
+            if (backendVAOIt != VertexArrayImpl::g_backendVertexArrayObjects.end()) {
+                backendVAOIt->second->SyncClientSideAttributesForDrawElements(currentVAO, count, type, indices);
+                backendVAOIt->second->SyncCurrentVertexAttributes(currentVAO);
+            }
+        }
         g_GLESFuncs.glDrawElements(mode, count, type, indices);
     }
 
@@ -1096,6 +1128,7 @@ namespace MobileGL::MG_Backend::DirectGLES {
             const auto& backendVAOIt = VertexArrayImpl::g_backendVertexArrayObjects.find(currentVAO.get());
             if (backendVAOIt != VertexArrayImpl::g_backendVertexArrayObjects.end()) {
                 backendVAOIt->second->SyncClientSideAttributesForDrawArrays(currentVAO, first, count);
+                backendVAOIt->second->SyncCurrentVertexAttributes(currentVAO);
             }
         }
         g_GLESFuncs.glDrawArrays(mode, first, count);

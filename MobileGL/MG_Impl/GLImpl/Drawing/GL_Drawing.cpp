@@ -11,6 +11,7 @@
 #include <MG_State/GLState/Core.h>
 #include <MG_State/EGLState/Core.h>
 #include <MG_Backend/BackendObjects.h>
+#include <vector>
 
 namespace MobileGL::MG_Impl::GLImpl {
     static Bool ValidateCurrentProgramForExecution(const char* functionName) {
@@ -31,6 +32,28 @@ namespace MobileGL::MG_Impl::GLImpl {
         }
 
         return true;
+    }
+
+    static void BuildQuadDrawIndices(GLint first, GLsizei count, std::vector<GLuint>& indices) {
+        indices.clear();
+
+        if (count < 4) {
+            return;
+        }
+
+        const GLsizei quadCount = count / 4;
+        indices.reserve(static_cast<SizeT>(quadCount) * 6);
+
+        for (GLsizei quadIndex = 0; quadIndex < quadCount; ++quadIndex) {
+            const GLuint base = static_cast<GLuint>(first + quadIndex * 4);
+
+            indices.push_back(base + 0);
+            indices.push_back(base + 1);
+            indices.push_back(base + 2);
+            indices.push_back(base + 2);
+            indices.push_back(base + 3);
+            indices.push_back(base + 0);
+        }
     }
 
     static Bool ValidateCurrentProgramForCompute(const char* functionName) {
@@ -401,7 +424,59 @@ namespace MobileGL::MG_Impl::GLImpl {
     void DrawArrays(GLenum mode, GLint first, GLsizei count) {
         if (!ValidateCurrentProgramForExecution(__func__)) return;
         if (!ValidatePrimitiveModeForBackend(__func__, mode)) return;
+
+        if (mode == GL_QUADS) {
+            std::vector<GLuint> indices;
+            BuildQuadDrawIndices(first, count, indices);
+            if (!indices.empty()) {
+                DrawElements_Backend(GL_TRIANGLES,
+                                     static_cast<GLsizei>(indices.size()),
+                                     GL_UNSIGNED_INT,
+                                     indices.data());
+            }
+            return;
+        }
+
         DrawArrays_Backend(mode, first, count);
+    }
+
+    void MultiDrawArrays(GLenum mode, const GLint* first, const GLsizei* count, GLsizei drawcount) {
+        if (drawcount < 0) {
+            MG_State::pGLContext->RecordError(
+                ErrorCode::InvalidValue,
+                MakeUnique<GenericErrorInfo>("MG_Impl/GLImpl", __func__, "drawcount must be non-negative."));
+            return;
+        }
+
+        if (first == nullptr || count == nullptr) {
+            MG_State::pGLContext->RecordError(
+                ErrorCode::InvalidValue,
+                MakeUnique<GenericErrorInfo>("MG_Impl/GLImpl", __func__, "`first` and `count` must be non-null."));
+            return;
+        }
+
+        if (!ValidateCurrentProgramForExecution(__func__)) return;
+        if (!ValidatePrimitiveModeForBackend(__func__, mode)) return;
+
+        for (GLsizei i = 0; i < drawcount; ++i) {
+            if (count[i] <= 0) {
+                continue;
+            }
+
+            if (mode == GL_QUADS) {
+                std::vector<GLuint> indices;
+                BuildQuadDrawIndices(first[i], count[i], indices);
+                if (!indices.empty()) {
+                    DrawElements_Backend(GL_TRIANGLES,
+                                         static_cast<GLsizei>(indices.size()),
+                                         GL_UNSIGNED_INT,
+                                         indices.data());
+                }
+                continue;
+            }
+
+            DrawArrays_Backend(mode, first[i], count[i]);
+        }
     }
 
     void MultiDrawElements(GLenum mode, const GLsizei* count, GLenum type, const void* const* indices,
