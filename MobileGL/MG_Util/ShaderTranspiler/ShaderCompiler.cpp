@@ -20,6 +20,22 @@
 namespace MobileGL {
     namespace MG_Util {
         namespace ShaderTranspiler {
+            namespace {
+                bool ShaderSourceUsesEsProfile(std::string_view source) {
+                    const SizeT versionPos = source.find("#version");
+                    if (versionPos == String::npos) {
+                        return false;
+                    }
+
+                    SizeT lineEnd = source.find('\n', versionPos);
+                    String versionLine(source.substr(versionPos, lineEnd == String::npos ? source.size() - versionPos
+                                                                                        : lineEnd - versionPos));
+                    std::transform(versionLine.begin(), versionLine.end(), versionLine.begin(),
+                                   [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+                    return versionLine.find(" es") != String::npos;
+                }
+            } // namespace
+
             TBuiltInResource& GetTBuiltInResourceInstance() {
                 static TBuiltInResource Resources{};
                 Resources.maxLights = 32;
@@ -148,12 +164,15 @@ namespace MobileGL {
                 tshader->setStrings(src, 1);
                 tshader->setNanMinMaxClamp(true);
                 tshader->setInvertY(true);
+                const bool usesEsProfile = ShaderSourceUsesEsProfile(sourceStr);
                 if (attrib.flags & ShaderCompileBits::CompileForOpenGL) {
-                    tshader->setEnvInput(glslang::EShSourceGlsl, lang, glslang::EShClientVulkan, 450);
+                    tshader->setEnvInput(glslang::EShSourceGlsl, lang, glslang::EShClientOpenGL,
+                                         usesEsProfile ? 310 : 460);
                     tshader->setEnvClient(glslang::EShClientOpenGL, glslang::EShTargetOpenGL_450);
                     tshader->setEnvTarget(glslang::EShTargetSpv, glslang::EShTargetSpv_1_3);
                 } else {
-                    tshader->setEnvInput(glslang::EShSourceGlsl, lang, glslang::EShClientVulkan, 450);
+                    tshader->setEnvInput(glslang::EShSourceGlsl, lang, glslang::EShClientVulkan,
+                                         usesEsProfile ? 310 : 450);
                     // MobileGL runtime currently creates Vulkan 1.1 instance/device on Android path,
                     // so generated SPIR-V must not exceed SPIR-V 1.3.
                     tshader->setEnvClient(glslang::EShClientVulkan, glslang::EShTargetVulkan_1_1);
@@ -164,7 +183,9 @@ namespace MobileGL {
                 tshader->setAutoMapLocations(true);
                 tshader->setAutoMapBindings(true);
                 tshader->setGlobalUniformBlockName(GLOBAL_UBO_NAME);
-                if (!tshader->parse(&GetTBuiltInResourceInstance(), 460, ECoreProfile,
+                const int defaultVersion = usesEsProfile ? 310 : 460;
+                const EProfile defaultProfile = usesEsProfile ? EEsProfile : ECoreProfile;
+                if (!tshader->parse(&GetTBuiltInResourceInstance(), defaultVersion, defaultProfile,
                                     /*forceDefaultVersionAndProfile: */ false,
                                     /*forwardCompatible: */ true, EShMsgDefault)) {
                     ResultInfo r;

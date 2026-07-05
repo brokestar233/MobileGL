@@ -108,6 +108,16 @@ namespace MobileGL::MG_State::GLState {
         }
     }
 
+    Bool TextureState::EnsureName(Uint index) {
+        if (index == 0) {
+            return false;
+        }
+        if (m_indexGenerator.IsValid(index)) {
+            return true;
+        }
+        return m_indexGenerator.Insert(index);
+    }
+
     TextureUnit& TextureState::GetUnitObject(Int unit) {
         MOBILEGL_ASSERT(unit >= 0 && unit < MAX_TEXTURE_IMAGE_UNITS, "Texture unit is out of range: %d > %d", unit,
                         MAX_TEXTURE_IMAGE_UNITS - 1);
@@ -141,4 +151,5 @@ namespace MobileGL::MG_State::GLState {
     Bool TextureState::ValidateTextureObject(Uint index) const {
         return m_textureObjects.find(index) != m_textureObjects.end();
     }
+
 } // namespace MobileGL::MG_State::GLState

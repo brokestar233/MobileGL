@@ -3,6 +3,7 @@
 ################################################################################
 
 /build
+/build-*
 .cxx
 /.vs
 /out/build
@@ -27,5 +28,7 @@ tools/trace_replay/work/
 tmp
 /.gradle
 /build-host-test
+/logs
+/.codex
 /fcl-latest*.log
 /mobilegl-*.log

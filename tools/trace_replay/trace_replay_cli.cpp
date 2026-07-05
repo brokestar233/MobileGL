@@ -18,6 +18,7 @@ void PrintUsage(const char *argv0) {
             << "  --diff PATH               Difference PNG output path\n"
             << "  --backend NAME            DirectGLES or DirectVulkan (default: DirectGLES)\n"
             << "  --mobilegl-library PATH   libMobileGL.so path (default: libMobileGL.so)\n"
+            << "  --glproc-library PATH     GL entrypoint library path (default: same as --mobilegl-library)\n"
             << "  --width N                 Replay surface width override\n"
             << "  --height N                Replay surface height override\n"
             << "  --window-surface          Replay to a native window surface\n"
@@ -89,6 +90,8 @@ bool ParseArgs(int argc, char **argv, mobilegl_trace::Request &request) {
             if (!ReadValue(argc, argv, i, request.backend)) return false;
         } else if (arg == "--mobilegl-library") {
             if (!ReadValue(argc, argv, i, request.mobileGlLibrary)) return false;
+        } else if (arg == "--glproc-library") {
+            if (!ReadValue(argc, argv, i, request.glProcLibrary)) return false;
         } else if (arg == "--target-frame") {
             if (!ReadInt(argc, argv, i, request.targetFrame)) return false;
         } else if (arg == "--target-call") {

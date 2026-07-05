@@ -303,6 +303,68 @@ TEST_F(TextureTest, BoundTexSubImage2DUnpacksPackedRgba8888ToRgba8) {
     EXPECT_EQ(MG_Impl::GLImpl::GetError(), GL_NO_ERROR);
 }
 
+TEST_F(TextureTest, BoundTexSubImage2DUnpacksPackedBgra8888RevToUnsizedRgba) {
+    GLuint texture = 0;
+    MG_Impl::GLImpl::GenTextures(1, &texture);
+    MG_Impl::GLImpl::BindTexture(GL_TEXTURE_2D, texture);
+    MG_Impl::GLImpl::TexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 2, 1, 0, GL_BGRA, GL_UNSIGNED_INT_8_8_8_8_REV, nullptr);
+
+    const Uint8 pixels[] = {
+        10, 20, 30, 40,
+        50, 60, 70, 80,
+    };
+    MG_Impl::GLImpl::TexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, 2, 1, GL_BGRA, GL_UNSIGNED_INT_8_8_8_8_REV, pixels);
+
+    const auto* stored = GetBoundTexture2DLevelBytes(texture);
+    const Uint8 expected[] = {
+        30, 20, 10, 40,
+        70, 60, 50, 80,
+    };
+    for (SizeT i = 0; i < sizeof(expected); ++i) {
+        EXPECT_EQ(stored[i], expected[i]) << "byte " << i;
+    }
+    EXPECT_EQ(MG_Impl::GLImpl::GetError(), GL_NO_ERROR);
+}
+
+TEST_F(TextureTest, BoundTexImage2DUnpacksPackedBgra8888RevToUnsizedRgba) {
+    GLuint texture = 0;
+    MG_Impl::GLImpl::GenTextures(1, &texture);
+    MG_Impl::GLImpl::BindTexture(GL_TEXTURE_2D, texture);
+
+    const Uint8 pixels[] = {
+        10, 20, 30, 40,
+        50, 60, 70, 80,
+    };
+    MG_Impl::GLImpl::TexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 2, 1, 0, GL_BGRA, GL_UNSIGNED_INT_8_8_8_8_REV, pixels);
+
+    const auto* stored = GetBoundTexture2DLevelBytes(texture);
+    const Uint8 expected[] = {
+        30, 20, 10, 40,
+        70, 60, 50, 80,
+    };
+    for (SizeT i = 0; i < sizeof(expected); ++i) {
+        EXPECT_EQ(stored[i], expected[i]) << "byte " << i;
+    }
+    EXPECT_EQ(MG_Impl::GLImpl::GetError(), GL_NO_ERROR);
+}
+
+TEST_F(TextureTest, BoundTexImage2DInfersSizedRgba8FromPackedBgra8888Rev) {
+    GLuint texture = 0;
+    MG_Impl::GLImpl::GenTextures(1, &texture);
+    MG_Impl::GLImpl::BindTexture(GL_TEXTURE_2D, texture);
+
+    const Uint8 pixels[] = {
+        10, 20, 30, 40,
+        50, 60, 70, 80,
+    };
+    MG_Impl::GLImpl::TexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 2, 1, 0, GL_BGRA, GL_UNSIGNED_INT_8_8_8_8_REV, pixels);
+
+    const auto textureObject = MG_State::pGLContext->GetTextureObject(texture);
+    ASSERT_NE(textureObject, nullptr);
+    EXPECT_EQ(textureObject->GetFormat(), TextureInternalFormat::RGBA8);
+    EXPECT_EQ(MG_Impl::GLImpl::GetError(), GL_NO_ERROR);
+}
+
 TEST_F(TextureTest, BoundTexSubImage2DKeepsPackedRgba8888RevAsRgba8) {
     GLuint texture = 0;
     MG_Impl::GLImpl::GenTextures(1, &texture);
@@ -390,6 +452,27 @@ TEST_F(TextureTest, GetTextureImageReadsNamedObjectWithoutBinding) {
     EXPECT_EQ(MG_Impl::GLImpl::GetError(), GL_NO_ERROR);
 }
 
+TEST_F(TextureTest, GetTextureImageReadsUnsizedBgra8888RevTextureWithoutBinding) {
+    GLuint texture = 0;
+    MG_Impl::GLImpl::CreateTextures(GL_TEXTURE_2D, 1, &texture);
+    MG_Impl::GLImpl::BindTextureUnit(0, texture);
+    const Uint8 pixels[] = {
+        10, 20, 30, 40,
+        50, 60, 70, 80,
+    };
+    MG_Impl::GLImpl::TexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 2, 1, 0, GL_BGRA, GL_UNSIGNED_INT_8_8_8_8_REV, pixels);
+
+    Uint8 output[sizeof(pixels)] = {};
+    MG_Impl::GLImpl::GetTextureImage(texture, 0, GL_RGBA, GL_UNSIGNED_BYTE, sizeof(output), output);
+
+    const Uint8 expected[] = {
+        30, 20, 10, 40,
+        70, 60, 50, 80,
+    };
+    EXPECT_EQ(std::memcmp(output, expected, sizeof(expected)), 0);
+    EXPECT_EQ(MG_Impl::GLImpl::GetError(), GL_NO_ERROR);
+}
+
 TEST_F(TextureTest, GetTextureSubImageReadsFullNamedLevelWithoutBinding) {
     GLuint texture = 0;
     GLuint boundTexture = 0;
@@ -448,6 +531,24 @@ TEST_F(TextureTest, TextureParameteriAndBindTextureUnitAreDirectStateAccess) {
     EXPECT_EQ(MG_Impl::GLImpl::GetError(), GL_NO_ERROR);
 }
 
+TEST_F(TextureTest, BindTextureRecreatesDeletedGeneratedName) {
+    GLuint texture = 0;
+    MG_Impl::GLImpl::GenTextures(1, &texture);
+    ASSERT_NE(texture, 0u);
+
+    MG_Impl::GLImpl::DeleteTextures(1, &texture);
+    EXPECT_FALSE(MG_State::pGLContext->ValidateTextureObject(texture));
+
+    MG_Impl::GLImpl::BindTexture(GL_TEXTURE_2D, texture);
+    const auto reboundObject = MG_State::pGLContext->GetTextureUnitObject(0)
+                                   .GetBindingSlot(TextureTarget::Texture2D)
+                                   .GetBoundObject();
+    ASSERT_NE(reboundObject, nullptr);
+    EXPECT_EQ(reboundObject->GetExternalIndex(), texture);
+    EXPECT_TRUE(MG_State::pGLContext->ValidateTextureObject(texture));
+    EXPECT_EQ(MG_Impl::GLImpl::GetError(), GL_NO_ERROR);
+}
+
 TEST_F(TextureTest, TextureParameterfModifiesNamedObjectWithoutBinding) {
     GLuint namedTexture = 0;
     GLuint boundTexture = 0;
@@ -478,6 +579,23 @@ TEST_F(TextureTest, TextureParameterfModifiesNamedObjectWithoutBinding) {
     EXPECT_EQ(boundMagFilter, GL_LINEAR);
     EXPECT_EQ(MG_State::pGLContext->GetTextureUnitObject(0).GetBindingSlot(TextureTarget::Texture2D).GetBoundObject(),
               boundObjectBefore);
+    EXPECT_EQ(MG_Impl::GLImpl::GetError(), GL_NO_ERROR);
+}
+
+TEST_F(TextureTest, TextureParameterfNormalizesLegacyClampToClampToEdge) {
+    GLuint texture = 0;
+    MG_Impl::GLImpl::CreateTextures(GL_TEXTURE_2D, 1, &texture);
+
+    MG_Impl::GLImpl::TextureParameterf(texture, GL_TEXTURE_WRAP_S, static_cast<GLfloat>(GL_CLAMP));
+    MG_Impl::GLImpl::TextureParameterf(texture, GL_TEXTURE_WRAP_T, static_cast<GLfloat>(GL_CLAMP));
+
+    GLint wrapS = 0;
+    GLint wrapT = 0;
+    MG_Impl::GLImpl::GetTextureParameteriv(texture, GL_TEXTURE_WRAP_S, &wrapS);
+    MG_Impl::GLImpl::GetTextureParameteriv(texture, GL_TEXTURE_WRAP_T, &wrapT);
+
+    EXPECT_EQ(wrapS, GL_CLAMP_TO_EDGE);
+    EXPECT_EQ(wrapT, GL_CLAMP_TO_EDGE);
     EXPECT_EQ(MG_Impl::GLImpl::GetError(), GL_NO_ERROR);
 }
 

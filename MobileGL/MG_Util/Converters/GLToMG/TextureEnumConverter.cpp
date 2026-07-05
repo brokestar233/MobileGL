@@ -396,6 +396,9 @@ namespace MobileGL {
 
         SamplerWrapMode ConvertGLEnumToSamplerWrapMode(GLenum v) {
             switch (v) {
+            case GL_CLAMP:
+                // Legacy desktop OpenGL commonly uses GL_CLAMP where modern GL/GLES expects edge clamp.
+                return SamplerWrapMode::ClampToEdge;
             case GL_CLAMP_TO_EDGE:
                 return SamplerWrapMode::ClampToEdge;
             case GL_MIRRORED_REPEAT:

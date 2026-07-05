@@ -49,6 +49,7 @@ namespace MobileGL::MG_State::GLState {
         Int GetActiveTextureUnit() const;
         void SetActiveTextureUnit(Int unit);
         void MarkTextureObjectForDeletion(Uint index);
+        Bool EnsureName(Uint index);
         Bool ValidateName(Uint index) const;
         Bool ValidateTextureObject(Uint index) const;
 

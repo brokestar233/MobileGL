@@ -9,6 +9,17 @@
 #include "PixelStoreProcessor.h"
 
 namespace MobileGL::MG_Util::PixelStoreProcessor {
+    static Bool UsesRgbaOrderedByteStorage(TextureInternalFormat targetInternalFormat) {
+        switch (targetInternalFormat) {
+        case TextureInternalFormat::RGBA:
+        case TextureInternalFormat::RGBA8:
+        case TextureInternalFormat::SRGB8Alpha8:
+            return true;
+        default:
+            return false;
+        }
+    }
+
     static SizeT CalculateRowStride(Int width, SizeT pixelSize, Int alignment) {
         if (width <= 0 || pixelSize == 0) return 0;
 
@@ -159,7 +170,7 @@ namespace MobileGL::MG_Util::PixelStoreProcessor {
             (inputDataType == TexturePixelDataType::UnsignedByte || inputDataType == TexturePixelDataType::Byte);
         Vector<TextureSwizzleParam> colorSwizzle;
         const Bool needColorSwizzle =
-            targetInternalFormat == TextureInternalFormat::RGBA8 &&
+            UsesRgbaOrderedByteStorage(targetInternalFormat) &&
             GetRgba8ByteSwizzleForUnpack(textureInputFormat, inputDataType, colorSwizzle);
         for (Int z = 0; z < copyDepth; ++z) {
             const Uint8* layerSrc = src;

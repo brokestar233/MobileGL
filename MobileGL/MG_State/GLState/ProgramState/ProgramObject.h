@@ -58,6 +58,10 @@ namespace MobileGL::MG_State::GLState {
         }
 
         Bool IsValidUniformLocation(Int location) const {
+            if (location < 0) return false;
+            if (m_syntheticUniformOffsets.find(static_cast<Uint>(location)) != m_syntheticUniformOffsets.end()) {
+                return true;
+            }
             if (location < 0 || location > static_cast<Int>(m_maxUniformLocation)) return false;
             if (static_cast<SizeT>(location) >= m_uniformIndexInTProgram.size()) return false;
             const Int uniformIndexInProgram = m_uniformIndexInTProgram[location];
@@ -66,6 +70,10 @@ namespace MobileGL::MG_State::GLState {
         }
 
         GLenum GetUniformType(Uint location) const {
+            const auto syntheticIt = m_syntheticUniformTypes.find(location);
+            if (syntheticIt != m_syntheticUniformTypes.end()) {
+                return syntheticIt->second;
+            }
             auto& uniform = m_program->getUniform(m_uniformIndexInTProgram[location]);
             return uniform.glDefineType;
         }
@@ -86,13 +94,23 @@ namespace MobileGL::MG_State::GLState {
         }
 
         const glslang::TType* GetUniformTType(Uint location) const {
+            if (m_syntheticUniformOffsets.find(location) != m_syntheticUniformOffsets.end()) {
+                return nullptr;
+            }
             auto& uniform = m_program->getUniform(m_uniformIndexInTProgram[location]);
             return uniform.getType();
         }
 
-        Bool IsUniformOpaqueAtLocation(Uint location) const { return GetUniformTType(location)->isOpaque(); }
+        Bool IsUniformOpaqueAtLocation(Uint location) const {
+            const auto* type = GetUniformTType(location);
+            return type != nullptr && type->isOpaque();
+        }
 
         const String& GetUniformName(Uint location) const {
+            const auto syntheticIt = m_syntheticUniformNames.find(location);
+            if (syntheticIt != m_syntheticUniformNames.end()) {
+                return syntheticIt->second;
+            }
             auto& uniform = m_program->getUniform(m_uniformIndexInTProgram[location]);
             return uniform.name;
         }
@@ -101,8 +119,20 @@ namespace MobileGL::MG_State::GLState {
             auto& uniform = m_program->getUniform(static_cast<Int>(index));
             return uniform.name;
         }
-        Uint GetUniformOffset(Uint location) const { return m_uniformOffsets[location]; }
-        Uint GetUniformSizesInBytes(Uint location) const { return MG_Util::GetGLTypeSize(GetUniformType(location)); }
+        Uint GetUniformOffset(Uint location) const {
+            const auto syntheticIt = m_syntheticUniformOffsets.find(location);
+            if (syntheticIt != m_syntheticUniformOffsets.end()) {
+                return syntheticIt->second;
+            }
+            return m_uniformOffsets[location];
+        }
+        Uint GetUniformSizesInBytes(Uint location) const {
+            const auto syntheticIt = m_syntheticUniformSizesInBytes.find(location);
+            if (syntheticIt != m_syntheticUniformSizesInBytes.end()) {
+                return syntheticIt->second;
+            }
+            return MG_Util::GetGLTypeSize(GetUniformType(location));
+        }
 
         Int GetAttributeLocation(const String& name) {
             const auto it = std::find(m_attribs.begin(), m_attribs.end(), name);
@@ -173,8 +203,10 @@ namespace MobileGL::MG_State::GLState {
         Uint32 GetBackendStateVersion() const { return m_backendStateVersion; }
 
         void SetUniformSamplerOrImageUnitIndex(Uint location, Int unit) {
-            if (location >= m_uniformSamplerOrImageUnitIndex.size() ||
-                m_uniformSamplerOrImageUnitIndex[location] == unit) {
+            if (location >= m_uniformSamplerOrImageUnitIndex.size()) {
+                return;
+            }
+            if (m_uniformSamplerOrImageUnitIndex[location] == unit) {
                 return;
             }
             m_uniformSamplerOrImageUnitIndex[location] = unit;
@@ -182,6 +214,9 @@ namespace MobileGL::MG_State::GLState {
         }
 
         Int GetUniformSamplerOrImageUnitIndex(Uint location) const {
+            if (location >= m_uniformSamplerOrImageUnitIndex.size()) {
+                return -1;
+            }
             return m_uniformSamplerOrImageUnitIndex[location];
         }
 
@@ -296,6 +331,10 @@ namespace MobileGL::MG_State::GLState {
         Vector<Uint> m_uniformOffsets;
         Vector<Uint> m_uniformSizesInBytes;
         Vector<Uint8> m_globalUboScratch;
+        UnorderedMap<Uint, String> m_syntheticUniformNames;
+        UnorderedMap<Uint, Uint> m_syntheticUniformOffsets;
+        UnorderedMap<Uint, Uint> m_syntheticUniformSizesInBytes;
+        UnorderedMap<Uint, GLenum> m_syntheticUniformTypes;
 
         Uint m_activeUniformCount = 0;
         Uint m_maxUniformLocation = 0;

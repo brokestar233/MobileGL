@@ -880,11 +880,11 @@ namespace MobileGL::MG_Impl::GLImpl {
         auto& activeUnit = MG_State::pGLContext->GetTextureUnitObject(MG_State::pGLContext->GetActiveTextureUnit());
         auto& bindingSlot = activeUnit.GetBindingSlot(textureTarget);
         auto& textureObject = bindingSlot.GetBoundObject();
-        TextureInternalFormat textureInternalFormat = textureObject->GetFormat();
-        MGLOG_D("%s: working on texture %d", __func__, textureObject->GetExternalIndex());
 
         // ===================== Error Checking ==============================
         if (!TextureImpl::ValidateTextureObject(textureObject)) return;
+        TextureInternalFormat textureInternalFormat = textureObject->GetFormat();
+        MGLOG_D("%s: working on texture %d", __func__, textureObject->GetExternalIndex());
         if (!TextureImpl::ValidateTextureSubImageOffsets(textureObject, xoffset, width, yoffset, height)) return;
         if (!TextureImpl::ValidateTextureInternalFormatCompatibleWithInput(textureInputFormat, textureInternalFormat,
                                                                            texturePixelDataType))
@@ -1036,7 +1036,6 @@ namespace MobileGL::MG_Impl::GLImpl {
 
     // TexParameteriv/TexParameterfv are introduced in OpenGL 4.0, so do not support them for now.
     void TexParameterf_State(GLenum target, GLenum pname, GLfloat param) {
-
         // ======================= Converting ================================
         TextureUploadTarget textureUploadTarget = MG_Util::ConvertGLEnumToTextureUploadTarget(target);
         TextureTarget textureTarget = MG_Util::ConvertGLEnumToTextureTarget(target);
@@ -2538,14 +2537,13 @@ namespace MobileGL::MG_Impl::GLImpl {
             return;
         }
 
-        if (!MG_State::pGLContext->ValidateTextureName(texture)) {
+        if (!MG_State::pGLContext->ValidateTextureName(texture) &&
+            !MG_State::pGLContext->EnsureTextureName(texture)) {
             MG_State::pGLContext->RecordError(
                 ErrorCode::InvalidOperation,
-                MakeUnique<GenericErrorInfo>("MG_Impl/GLImpl", "BindTexture_State", "Invalid texture name"));
+                MakeUnique<GenericErrorInfo>("MG_Impl/GLImpl", "BindTexture_State", "Failed to reserve texture name"));
             return;
         }
-
-        if (!TextureImpl::ValidateTextureName(texture, true)) return;
 
         // ======================= Processing ================================
         Bool doesTextureExist = MG_State::pGLContext->ValidateTextureObject(texture);

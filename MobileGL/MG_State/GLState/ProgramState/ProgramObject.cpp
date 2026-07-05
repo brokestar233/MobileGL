@@ -101,6 +101,25 @@ namespace {
         }
         return false;
     }
+
+    static GLenum InferSyntheticUniformTypeFromSize(MobileGL::Uint sizeInBytes) {
+        switch (sizeInBytes) {
+        case 4:
+            return GL_FLOAT;
+        case 8:
+            return GL_FLOAT_VEC2;
+        case 12:
+            return GL_FLOAT_VEC3;
+        case 16:
+            return GL_FLOAT_VEC4;
+        case 36:
+            return GL_FLOAT_MAT3;
+        case 64:
+            return GL_FLOAT_MAT4;
+        default:
+            return GL_FLOAT;
+        }
+    }
 }
 
 namespace MobileGL::MG_State::GLState {
@@ -116,6 +135,10 @@ namespace MobileGL::MG_State::GLState {
         m_uniformOffsets.clear();
         m_uniformSizesInBytes.clear();
         m_globalUboScratch.clear();
+        m_syntheticUniformNames.clear();
+        m_syntheticUniformOffsets.clear();
+        m_syntheticUniformSizesInBytes.clear();
+        m_syntheticUniformTypes.clear();
         m_attribs.clear();
         m_attribTypes.clear();
         m_activeUniformCount = 0;
@@ -622,16 +645,27 @@ namespace MobileGL::MG_State::GLState {
                         MGLOG_D("ProgramObject %u: GenerateBinary - uniform '%s' offset=%u assigned to location %u",
                                 m_externalIndex, name.c_str(), offset, m_uniformLocations[name]);
             } else {
-                MGLOG_D("ProgramObject %u: GenerateBinary - uniform '%s' offset=%u but not found in "
-                        "m_uniformLocations",
-                        m_externalIndex, name.c_str(), offset);
+                const Uint syntheticLocation = ++m_maxUniformLocation;
+                m_uniformLocations[name] = syntheticLocation;
+                m_syntheticUniformNames[syntheticLocation] = name;
+                m_syntheticUniformOffsets[syntheticLocation] = offset;
+                m_syntheticUniformTypes[syntheticLocation] = GL_FLOAT;
+                MGLOG_D("ProgramObject %u: GenerateBinary - synthetic uniform '%s' created at location %u "
+                        "with offset=%u",
+                        m_externalIndex, name.c_str(), syntheticLocation, offset);
             }
                 }
                 for (const auto& [name, size] : meta.plainUniformMemberSizesInBytes) {
                     if (m_uniformLocations.find(name) != m_uniformLocations.end()) {
-                        m_uniformSizesInBytes[m_uniformLocations[name]] = size;
+                        const Uint location = m_uniformLocations[name];
+                        if (location < m_uniformSizesInBytes.size()) {
+                            m_uniformSizesInBytes[location] = size;
+                        } else {
+                            m_syntheticUniformSizesInBytes[location] = size;
+                            m_syntheticUniformTypes[location] = InferSyntheticUniformTypeFromSize(size);
+                        }
                         MGLOG_D("ProgramObject %u: GenerateBinary - uniform '%s' size=%u assigned to location %u",
-                                m_externalIndex, name.c_str(), size, m_uniformLocations[name]);
+                                m_externalIndex, name.c_str(), size, location);
             } else {
                 MGLOG_D("ProgramObject %u: GenerateBinary - uniform '%s' size=%u but not found in "
                         "m_uniformLocations",

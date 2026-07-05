@@ -261,16 +261,18 @@ namespace {
         ReplaceIdentifier(source, "GL_ARB_gpu_shader_int64", "MG_DISABLED_GL_ARB_gpu_shader_int64");
     }
 
-    void ModernizeLegacyGLSL(MobileGL::ShaderStage stage, MobileGL::String& source) {
-        RemoveDefineForIdentifier(source, "HIGHP_OR_DEFAULT");
-        RemoveDefineForIdentifier(source, "MEDIUMP_OR_DEFAULT");
-        RemoveDefineForIdentifier(source, "LOWP_OR_DEFAULT");
-        ReplaceIdentifier(source, "HIGHP_OR_DEFAULT", "");
-        ReplaceIdentifier(source, "MEDIUMP_OR_DEFAULT", "");
-        ReplaceIdentifier(source, "LOWP_OR_DEFAULT", "");
-        ReplaceIdentifier(source, "highp", "");
-        ReplaceIdentifier(source, "mediump", "");
-        ReplaceIdentifier(source, "lowp", "");
+    void ModernizeLegacyGLSL(MobileGL::ShaderStage stage, MobileGL::ShaderProfile profile, MobileGL::String& source) {
+        if (profile != MobileGL::ShaderProfile::ES) {
+            RemoveDefineForIdentifier(source, "HIGHP_OR_DEFAULT");
+            RemoveDefineForIdentifier(source, "MEDIUMP_OR_DEFAULT");
+            RemoveDefineForIdentifier(source, "LOWP_OR_DEFAULT");
+            ReplaceIdentifier(source, "HIGHP_OR_DEFAULT", "");
+            ReplaceIdentifier(source, "MEDIUMP_OR_DEFAULT", "");
+            ReplaceIdentifier(source, "LOWP_OR_DEFAULT", "");
+            ReplaceIdentifier(source, "highp", "");
+            ReplaceIdentifier(source, "mediump", "");
+            ReplaceIdentifier(source, "lowp", "");
+        }
 
         ReplaceIdentifier(source, "texture2D", "texture");
         ReplaceIdentifier(source, "texture2DProj", "textureProj");
@@ -360,7 +362,11 @@ namespace MobileGL {
                 if (versionPos != String::npos) {
                     String versionLine = source.substr(versionPos, lineEnd - versionPos);
 
-                    if (versionLine.find("ES") != String::npos)
+                    String lowerVersionLine = versionLine;
+                    std::transform(lowerVersionLine.begin(), lowerVersionLine.end(), lowerVersionLine.begin(),
+                                   [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+
+                    if (lowerVersionLine.find(" es") != String::npos)
                         profile = ShaderProfile::ES;
                     else if (versionLine.find("compatibility") != String::npos)
                         profile = ShaderProfile::Compatibility;
@@ -387,6 +393,13 @@ namespace MobileGL {
                     } else {
                         source = replacement;
                     }
+                } else {
+                    constexpr const char* versionDirectiveEs = "#version 310 es\n";
+                    if (firstLineEnd != String::npos) {
+                        source.replace(versionPos, firstLineEnd - versionPos + 1, versionDirectiveEs);
+                    } else {
+                        source = versionDirectiveEs;
+                    }
                 }
 
                 FilterUnsupportedGpuShaderInt64(source);
@@ -398,7 +411,7 @@ namespace MobileGL {
                 RenameBuiltinShadowingFunction(source, "fma", "mg_fma");
                 RenameBuiltinShadowingFunction(source, "min3", "mg_min3");
                 RenameBuiltinShadowingFunction(source, "max3", "mg_max3");
-                ModernizeLegacyGLSL(stage, source);
+                ModernizeLegacyGLSL(stage, profile, source);
                 InjectDepthRangeBuiltinShim(stage, source);
             }
 

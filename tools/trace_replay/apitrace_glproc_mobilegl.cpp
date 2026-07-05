@@ -27,6 +27,17 @@ void *GetMobileGlHandle() {
         return _libGlHandle;
     }
 
+    const char *glLibrary = std::getenv("MOBILEGL_TRACE_GL_LIBRARY");
+    if (glLibrary != nullptr && glLibrary[0] != '\0') {
+        _libGlHandle = dlopen(glLibrary, RTLD_NOW | RTLD_GLOBAL | RTLD_NOLOAD);
+        if (_libGlHandle == nullptr) {
+            _libGlHandle = dlopen(glLibrary, RTLD_NOW | RTLD_GLOBAL);
+        }
+    }
+    if (_libGlHandle != nullptr) {
+        return _libGlHandle;
+    }
+
     const char *library = std::getenv("MOBILEGL_TRACE_LIBRARY");
     if (library != nullptr && library[0] != '\0') {
         _libGlHandle = dlopen(library, RTLD_NOW | RTLD_GLOBAL | RTLD_NOLOAD);

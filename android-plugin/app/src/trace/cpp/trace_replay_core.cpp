@@ -133,6 +133,14 @@ std::string JsonEscape(const std::string& value) {
 bool LoadMobileGL(const Request& request, std::string& error) {
     setenv("MOBILEGL_BACKEND_TYPE", request.backend.c_str(), 1);
     setenv("MOBILEGL_TRACE_LIBRARY", request.mobileGlLibrary.c_str(), 1);
+    const std::string& glProcLibrary =
+        request.glProcLibrary.empty() ? request.mobileGlLibrary : request.glProcLibrary;
+    setenv("MOBILEGL_TRACE_GL_LIBRARY", glProcLibrary.c_str(), 1);
+    if (glProcLibrary != request.mobileGlLibrary) {
+        setenv("SFPEW_EGL", request.mobileGlLibrary.c_str(), 1);
+    } else {
+        unsetenv("SFPEW_EGL");
+    }
     setenv("MOBILEGL_TRACE_SKIP_AUTODESTROY", "1", 1);
     setenv("MOBILEGL_TRACE_SURFACE", request.usePbuffer ? "pbuffer" : "window", 1);
     if (UseAngleForRequest(request)) {
@@ -439,6 +447,7 @@ int RunRetraceMain(const Request& request, bool usePresentDump) {
     std::string argBenchmark = "-b";
     std::string argSingleThread = "--singlethread";
     std::string argNoContextCheck = "--no-context-check";
+    std::string argCallNos = "--call-nos";
     std::string argSnapshotAlpha = "--snapshot-alpha";
     std::string argSnapshotPrefix = "-s";
     std::string argSnapshotCall = "-S";
@@ -449,6 +458,7 @@ int RunRetraceMain(const Request& request, bool usePresentDump) {
             argBenchmark.data(),
             argSingleThread.data(),
             argNoContextCheck.data(),
+            argCallNos.data(),
             argSnapshotAlpha.data(),
             argSnapshotPrefix.data(),
             prefix.data(),
@@ -457,7 +467,7 @@ int RunRetraceMain(const Request& request, bool usePresentDump) {
             tracePath.data(),
             nullptr,
     };
-    return MOBILEGL_APITRACE_RETRACE_MAIN(10, argv);
+    return MOBILEGL_APITRACE_RETRACE_MAIN(11, argv);
 }
 
 bool RunRetrace(const Request& request, bool usePresentDump, Result& result) {
