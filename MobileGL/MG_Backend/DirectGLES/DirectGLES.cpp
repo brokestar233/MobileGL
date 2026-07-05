@@ -329,7 +329,8 @@ namespace MobileGL::MG_Backend::DirectGLES {
 
     namespace TextureImpl {
         SharedPtr<BackendTextureObject>& SyncTextureObjectToBackend(
-            const SharedPtr<MG_State::GLState::ITextureObject>& textureObject) {
+            const SharedPtr<MG_State::GLState::ITextureObject>& textureObject,
+            Bool imageBindableStorageRequired) {
 #ifdef TRACY_ENABLE
             ZoneScopedC(TRACY_ZONECOLOR_BACKEND);
 #endif
@@ -338,6 +339,9 @@ namespace MobileGL::MG_Backend::DirectGLES {
             auto& backendObj = exist ? backendTextureIt->second : g_backendTextureObjects.GetOrCreate(textureObject);
             if (!exist) {
                 backendObj = MakeShared<BackendTextureObject>();
+            }
+            if (imageBindableStorageRequired) {
+                backendObj->RequireImageBindableStorage();
             }
             backendObj->SyncTextureParamsToBackend(textureObject);
             backendObj->SyncBuiltinSamplerToBackend(textureObject);
@@ -380,6 +384,12 @@ namespace MobileGL::MG_Backend::DirectGLES {
             }
         }
 
+        static Bool SupportsLayeredImageBinding(TextureTarget target) {
+            return target == TextureTarget::Texture3D || target == TextureTarget::TextureCubeMap ||
+                   target == TextureTarget::Texture2DArray || target == TextureTarget::TextureCubeMapArray ||
+                   target == TextureTarget::Texture2DMultisampleArray;
+        }
+
         void SyncImageTextureBinding(Uint unit) {
 #ifdef TRACY_ENABLE
             ZoneScopedC(TRACY_ZONECOLOR_BACKEND);
@@ -390,10 +400,11 @@ namespace MobileGL::MG_Backend::DirectGLES {
                 return;
             }
 
-            auto& backendTexture = SyncTextureObjectToBackend(imageBinding.Texture);
+            auto& backendTexture = SyncTextureObjectToBackend(imageBinding.Texture, true);
+            const GLboolean layered =
+                SupportsLayeredImageBinding(imageBinding.Texture->GetTarget()) ? imageBinding.Layered : GL_FALSE;
             g_GLESFuncs.glBindImageTexture(unit, backendTexture->GetBackendTextureId(), imageBinding.Level,
-                                           imageBinding.Layered, imageBinding.Layer, imageBinding.Access,
-                                           imageBinding.Format);
+                                           layered, imageBinding.Layer, imageBinding.Access, imageBinding.Format);
         }
 
         void SyncImageTextureBindings() {
