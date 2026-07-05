@@ -358,6 +358,7 @@ if (MOBILEGL_BUILD_SIMPLE_FPE_WRAPPER)
         set(MOBILEGL_SIMPLE_FPE_WRAPPER_SOURCE_FILES
                 ${MOBILEGL_SIMPLE_FPE_WRAPPER_ROOT}/SimpleFPEWrapper/init.cpp
                 ${MOBILEGL_SIMPLE_FPE_WRAPPER_ROOT}/SimpleFPEWrapper/drawing.cpp
+                ${MOBILEGL_SIMPLE_FPE_WRAPPER_ROOT}/SimpleFPEWrapper/framebuffer.cpp
                 ${MOBILEGL_SIMPLE_FPE_WRAPPER_ROOT}/SimpleFPEWrapper/getter.cpp
                 ${MOBILEGL_SIMPLE_FPE_WRAPPER_ROOT}/SimpleFPEWrapper/lookup.cpp
                 ${MOBILEGL_SIMPLE_FPE_WRAPPER_ROOT}/SimpleFPEWrapper/backend/loader.cpp

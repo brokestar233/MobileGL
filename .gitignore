@@ -24,3 +24,8 @@ MobileGL/MG*/cmake-build*
 /android-plugin/app/build
 /android-plugin/app/src/trace/jniLibs
 tools/trace_replay/work/
+tmp
+/.gradle
+/build-host-test
+/fcl-latest*.log
+/mobilegl-*.log

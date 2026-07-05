@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">MobileGL</string>
+    <string name="config_title">MobileGL 设置</string>
+    <string name="config_summary">单 APK，运行时切换后端与兼容模式。</string>
+    <string name="config_path_label">共享配置文件</string>
+    <string name="grant_fcl_access">授予 FCL 文件夹访问权限</string>
+    <string name="clear_permission">重置 FCL 文件夹授权</string>
+    <string name="backend_label">后端</string>
+    <string name="gl_mode_label">OpenGL 路径</string>
+    <string name="gl_mode_compat">兼容模式（SimpleFPEWrapper）</string>
+    <string name="gl_mode_direct">直通模式（尽量少包装）</string>
+    <string name="debug_log_label">调试日志</string>
+    <string name="debug_log_hint">开启后，MobileGL 会写入 %1$s 和 %2$s。测试前请先重启 FCL。</string>
+    <string name="config_hint">修改会立即保存。启动游戏前请重启 FCL。</string>
+    <string name="status_need_fcl_access">修改设置前请先授予 /storage/emulated/0/FCL 文件夹访问权限。</string>
+    <string name="status_need_storage_permission">修改设置前请先授予存储权限。</string>
+    <string name="status_ready">配置将写入 %1$s</string>
+    <string name="warning_path_selection_error">路径错误！请选择：\n%1$s\n但您选择了：\n%2$s</string>
+    <string name="config_saved">已保存</string>
+    <string name="config_save_failed">保存配置失败：%1$s</string>
+    <string name="dialog_info">应用信息</string>
+    <string name="view_version">版本：</string>
+    <string name="view_author">作者：</string>
+    <string name="view_renderer">渲染器：</string>
+    <string name="view_copyright">开源许可证：</string>
+    <string name="info_author" translatable="false">Swung, BZLZHH, Tungsten, brokestar233</string>
+    <string name="info_license" translatable="false">GNU LGPL-3.0</string>
+    <string name="info_renderer">单 APK，运行时切换后端与兼容模式</string>
+    <string name="info_copyright" translatable="false">GNU LGPL-3.0 License</string>
+</resources>

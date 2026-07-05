@@ -14,10 +14,53 @@
 #include <MG_Impl/GLImpl/Texture/ProxyTexture.h>
 #include <MG_Impl/GLImpl/Framebuffer/GL_Framebuffer.h>
 #include <cstdlib>
+#if defined(__ANDROID__)
+#include <fcntl.h>
+#endif
 
 namespace MobileGL {
     namespace {
         Bool g_isInitialized = false;
+
+#if defined(__ANDROID__)
+        constexpr const char* kAndroidFileLogPath = "/storage/emulated/0/FCL/mobilegl-latest.log";
+        constexpr const char* kAndroidNativeLogPath = "/storage/emulated/0/FCL/mobilegl-native.log";
+
+        void ConfigureAndroidLogSinks() {
+            static Bool configured = false;
+            if (configured) {
+                return;
+            }
+            configured = true;
+
+            const char* fileLogPath = std::getenv("MOBILEGL_LOG_FILE_PATH");
+            const char* nativeLogPath = std::getenv("MOBILEGL_NATIVE_LOG_FILE_PATH");
+            const Bool envOverridesLogging =
+                (fileLogPath && *fileLogPath) || (nativeLogPath && *nativeLogPath);
+            if (!envOverridesLogging && !MG_ConfigLoader::IsAndroidDebugLogEnabled()) {
+                return;
+            }
+
+            if (!fileLogPath || !*fileLogPath) {
+                setenv("MOBILEGL_LOG_FILE_PATH", kAndroidFileLogPath, 1);
+            }
+
+            if (!nativeLogPath || !*nativeLogPath) {
+                nativeLogPath = kAndroidNativeLogPath;
+            }
+
+            const int fd = ::open(nativeLogPath, O_CREAT | O_WRONLY | O_TRUNC | O_CLOEXEC, 0644);
+            if (fd < 0) {
+                return;
+            }
+
+            ::dup2(fd, STDERR_FILENO);
+            ::dup2(fd, STDOUT_FILENO);
+            if (fd != STDERR_FILENO && fd != STDOUT_FILENO) {
+                ::close(fd);
+            }
+        }
+#endif
 
         void DestroyImpl(Bool logLifecycle) {
             if (!g_isInitialized) {
@@ -49,6 +92,9 @@ namespace MobileGL {
             return;
         }
 
+#if defined(__ANDROID__)
+        ConfigureAndroidLogSinks();
+#endif
         MG_Util::Debug::InitFile();
         MGLOG_I("Initializing MobileGL...");
         MG_ConfigLoader::Init();

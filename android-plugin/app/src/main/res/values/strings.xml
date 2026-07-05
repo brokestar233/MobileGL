@@ -1,4 +1,31 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">MobileGL</string>
+    <string name="config_title">MobileGL Settings</string>
+    <string name="config_summary">One plugin APK, configurable backend and GL compatibility mode.</string>
+    <string name="config_path_label">Shared config file</string>
+    <string name="grant_fcl_access">Grant FCL folder access</string>
+    <string name="clear_permission">Reset FCL folder authorization</string>
+    <string name="backend_label">Backend</string>
+    <string name="gl_mode_label">OpenGL path</string>
+    <string name="gl_mode_compat">Compatibility mode (SimpleFPEWrapper)</string>
+    <string name="gl_mode_direct">Direct mode (minimal wrapping)</string>
+    <string name="debug_log_label">Debug logging</string>
+    <string name="debug_log_hint">When enabled, MobileGL writes %1$s and %2$s. Restart FCL before testing.</string>
+    <string name="config_hint">Changes are saved immediately. Restart FCL before launching the game.</string>
+    <string name="status_need_fcl_access">Grant access to the /storage/emulated/0/FCL folder before changing settings.</string>
+    <string name="status_need_storage_permission">Grant storage permission before changing settings.</string>
+    <string name="status_ready">Config will be written to %1$s</string>
+    <string name="warning_path_selection_error">Path error. Please select:\n%1$s\nbut selected:\n%2$s</string>
+    <string name="config_saved">Saved</string>
+    <string name="config_save_failed">Failed to save config: %1$s</string>
+    <string name="dialog_info">App Info</string>
+    <string name="view_version">Version: </string>
+    <string name="view_author">Author: </string>
+    <string name="view_renderer">Renderer: </string>
+    <string name="view_copyright">License: </string>
+    <string name="info_author" translatable="false">Swung, BZLZHH, Tungsten, brokestar233</string>
+    <string name="info_license" translatable="false">GNU LGPL-3.0</string>
+    <string name="info_renderer">Single APK with runtime-switchable backend and compatibility mode</string>
+    <string name="info_copyright" translatable="false">GNU LGPL-3.0 License</string>
 </resources>

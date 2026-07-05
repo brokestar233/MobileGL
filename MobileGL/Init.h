@@ -19,6 +19,7 @@ namespace MobileGL {
 
     namespace MG_ConfigLoader {
         void Init();
+        Bool IsAndroidDebugLogEnabled();
     } // namespace MG_ConfigLoader
 
     namespace MG_Backend {

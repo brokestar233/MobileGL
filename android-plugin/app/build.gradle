@@ -2,17 +2,16 @@ plugins {
     id 'com.android.application'
 }
 
-def mobileGlEnvString = { backendType, extraEnv = [:] ->
+def mobileGlEnvString = { extraEnv = [:] ->
     (
     [
-            LIBGL_ES             : '3',
-            POJAV_RENDERER       : 'opengles3',
-            MOBILEGL_BACKEND_TYPE: backendType,
+            LIBGL_ES      : '3',
+            POJAV_RENDERER: 'opengles3',
     ] + extraEnv
     ).collect { key, value -> "${key}=${value}" }.join(':')
 }
-def mobileGlRendererString = { label, libraryName ->
-    "${label}:${libraryName}:/${libraryName}"
+def mobileGlRendererString = { label, glLibraryName, eglLibraryName = glLibraryName ->
+    "${label}:${glLibraryName}:/${eglLibraryName}"
 }
 def signingStoreFile = file('../keystore.jks')
 def signingStorePassword = System.getenv('SIGNING_STORE_PASSWORD')
@@ -71,7 +70,7 @@ android {
         espryt {
             dimension 'backend'
             applicationId 'top.mobilegl.plugin.espryt'
-            def env = mobileGlEnvString('DirectGLES')
+            def env = mobileGlEnvString([MOBILEGL_BACKEND_TYPE: 'DirectGLES'])
             resValue 'string', 'mobilegl_default_backend', 'DirectGLES'
             manifestPlaceholders = [
                     appLabel: 'MobileGL Espryt',
@@ -84,7 +83,7 @@ android {
         magma {
             dimension 'backend'
             applicationId 'top.mobilegl.plugin.magma'
-            def env = mobileGlEnvString('DirectVulkan')
+            def env = mobileGlEnvString([MOBILEGL_BACKEND_TYPE: 'DirectVulkan'])
             resValue 'string', 'mobilegl_default_backend', 'DirectVulkan'
             manifestPlaceholders = [
                     appLabel: 'MobileGL Magma',
@@ -97,12 +96,12 @@ android {
         compat {
             dimension 'backend'
             applicationId 'top.mobilegl.plugin.compat'
-            def env = mobileGlEnvString('DirectVulkan', [SFPEW_EGL: 'libMobileGL.so'])
+            def env = mobileGlEnvString([SFPEW_EGL: 'libMobileGL.so'])
             resValue 'string', 'mobilegl_default_backend', 'DirectVulkan'
             manifestPlaceholders = [
-                    appLabel: 'MobileGL Compat',
-                    des     : 'MobileGL Compat',
-                    renderer: mobileGlRendererString('MobileGL Compat', 'libSimpleFPEWrapper.so'),
+                    appLabel: 'MobileGL',
+                    des     : 'MobileGL',
+                    renderer: mobileGlRendererString('MobileGL', 'libSimpleFPEWrapper.so', 'libMobileGL.so'),
                     boatEnv : env,
                     pojavEnv: env,
             ]
@@ -166,5 +165,8 @@ androidComponents {
 }
 
 dependencies {
+    implementation 'androidx.appcompat:appcompat:1.7.0'
+    implementation 'androidx.constraintlayout:constraintlayout:2.2.1'
+    implementation 'com.google.android.material:material:1.12.0'
     implementation project(':MobileGL')
 }

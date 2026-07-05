@@ -52,7 +52,7 @@
 #endif
 
 #ifdef __ANDROID__
-#define MOBILEGL_LOG_FILE_PATH "/sdcard/MG/latest.log"
+#define MOBILEGL_LOG_FILE_PATH ""
 #else
 #define MOBILEGL_LOG_FILE_PATH ""
 #endif

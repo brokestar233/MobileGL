@@ -28,6 +28,26 @@
 #include <MG_State/GLState/TextureState/TextureObjectBuffer.h>
 
 namespace MobileGL::MG_Impl::GLImpl {
+    namespace {
+        Int GetProxyTexture2DMaxSize() {
+            Int maxTextureSize = MG_Backend::DynamicBackendParameters{}.MaxTextureSize;
+            if (MG_Backend::pActiveBackendObject) {
+                maxTextureSize = MG_Backend::pActiveBackendObject->GetDynamicParameters().MaxTextureSize;
+            }
+            return std::max(maxTextureSize, 1);
+        }
+
+        Bool IsProxyTextureLevelSizeSupported(GLsizei width, GLsizei height, GLint level, Int maxTextureSize) {
+            if (width < 0 || height < 0 || level < 0) {
+                return false;
+            }
+
+            const auto widthAtBaseLevel = static_cast<long long>(width) << level;
+            const auto heightAtBaseLevel = static_cast<long long>(height) << level;
+            return widthAtBaseLevel <= maxTextureSize && heightAtBaseLevel <= maxTextureSize;
+        }
+    } // namespace
+
     static SharedPtr<MG_State::GLState::ITextureObject> nullTextureObject;
     static UnorderedMap<Uint, Bool> g_autoGenerateMipmapByTextureId;
 
@@ -1520,14 +1540,27 @@ namespace MobileGL::MG_Impl::GLImpl {
                         "Texture object here should always be an object with mipmap");
         auto textureMipmapObject = static_cast<MG_State::GLState::TextureObjectMipmap*>(textureObject.get());
 
-        // Allocate in TextureObject
         if (isProxy) {
-            MGLOG_D("%s: isProxy = true, not allocating", __func__);
-        } else {
-            MGLOG_D("%s: Allocating %d bytes at mip %d", __func__, internalBytes, level);
-            textureMipmapObject->AllocateStorage(textureUploadTarget, level,
-                                                 {{width, height, 1}, internalBytes});
+            const Int maxTextureSize = GetProxyTexture2DMaxSize();
+            const Bool supported = IsProxyTextureLevelSizeSupported(width, height, level, maxTextureSize);
+            const IntVec3 proxySize = supported ? IntVec3{width, height, 1} : IntVec3{0, 0, 0};
+
+            textureMipmapObject->AllocateStorage(textureUploadTarget, level, {proxySize, 0});
+            textureMipmapObject->MarkStorageDirty(textureUploadTarget, level, false);
+
+            MGLOG_I("ProxyTexImage2D level=%d size=%dx%d max=%d supported=%s",
+                    level,
+                    width,
+                    height,
+                    maxTextureSize,
+                    supported ? "true" : "false");
+            return;
         }
+
+        // Allocate in TextureObject
+        MGLOG_D("%s: Allocating %d bytes at mip %d", __func__, internalBytes, level);
+        textureMipmapObject->AllocateStorage(textureUploadTarget, level,
+                                             {{width, height, 1}, internalBytes});
 
         if (!originalPixels) {
             MGLOG_D("%s: No input pixel and no PBO bound, no pixel transfer", __func__);
