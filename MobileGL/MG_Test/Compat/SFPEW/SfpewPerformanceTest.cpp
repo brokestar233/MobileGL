@@ -459,4 +459,30 @@ namespace MobileGL::MG_Test::Compat::SFPEW {
 
         glDeleteTextures(1, &texture);
     }
+
+    TEST_F(SFPEWPerfFixture, VanillaWorldSizedClientArrayQuadsSmokeAndPerf) {
+        const GLuint texture = CreateAlphaCheckerTexture();
+        const auto batch68 = BuildTrackClientArrayBatch(17, 10.0f, 10.0f, 1.0f);
+        const auto batch100 = BuildTrackClientArrayBatch(25, 8.0f, 8.0f, 1.0f);
+        const auto batch132 = BuildTrackClientArrayBatch(33, 7.0f, 7.0f, 1.0f);
+        const auto batch64 = BuildTrackClientArrayBatch(16, 10.0f, 10.0f, 1.0f);
+        Setup2D(Harness.GetWidth(), Harness.GetHeight());
+
+        const auto frameFn = [&]() {
+            ASSERT_TRUE(Harness.Clear(0.10f, 0.12f, 0.16f, 1.0f, &Error)) << Error;
+            glBindTexture(GL_TEXTURE_2D, texture);
+            DrawTrackClientArrayRepeats(batch68, 72);
+            DrawTrackClientArrayRepeats(batch100, 48);
+            DrawTrackClientArrayRepeats(batch132, 8);
+            DrawTrackClientArrayRepeats(batch64, 28);
+        };
+
+        frameFn();
+        Harness.Finish();
+        EXPECT_TRUE(PixelHasVisibleColor(Harness.ReadPixel(16, 16)));
+        const auto result = MeasureScenario(Harness, "VanillaWorldSizedClientArrayQuads", 156, frameFn, 2, 10);
+        EXPECT_GT(result.FrameNanoseconds, 0.0);
+
+        glDeleteTextures(1, &texture);
+    }
 } // namespace MobileGL::MG_Test::Compat::SFPEW
