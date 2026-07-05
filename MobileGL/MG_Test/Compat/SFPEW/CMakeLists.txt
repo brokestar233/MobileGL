@@ -45,3 +45,5 @@ add_test(NAME SFPEW.CMMPanoramaClientArrayQuads
          COMMAND SFPEWPerfTest --gtest_filter=SFPEWPerfFixture.CMMPanoramaClientArrayQuadsSmokeAndPerf)
 add_test(NAME SFPEW.VanillaDisplayListCompileAndCallGuiQuads
          COMMAND SFPEWPerfTest --gtest_filter=SFPEWPerfFixture.VanillaDisplayListCompileAndCallGuiQuadsSmokeAndPerf)
+add_test(NAME SFPEW.AngelicaBatchedFontDrawElements
+         COMMAND SFPEWPerfTest --gtest_filter=SFPEWPerfFixture.AngelicaBatchedFontDrawElementsSmokeAndPerf)

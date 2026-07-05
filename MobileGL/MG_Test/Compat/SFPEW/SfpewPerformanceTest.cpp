@@ -437,7 +437,7 @@ namespace MobileGL::MG_Test::Compat::SFPEW {
         glDeleteTextures(1, &texture);
     }
 
-    TEST_F(SFPEWPerfFixture, DISABLED_AngelicaBatchedFontDrawElementsSmokeAndPerf) {
+    TEST_F(SFPEWPerfFixture, AngelicaBatchedFontDrawElementsSmokeAndPerf) {
         const GLuint texture = CreateAlphaCheckerTexture();
         const auto buffers = BuildBatchedFontGlyphs(192, 12.0f, 12.0f, 8.0f, 12.0f);
         Setup2D(Harness.GetWidth(), Harness.GetHeight());
