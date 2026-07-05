@@ -17,6 +17,7 @@
 #include <MG_Util/Converters/GLToMG/TextureEnumConverter.h>
 #include <MG_Util/Converters/MGToGL/ProgramEnumConverter.h>
 #include <MG_Util/Converters/MGToGL/TextureEnumConverter.h>
+#include <MG_Util/Converters/MGToGL/RenderStateEnumConverter.h>
 #include <MG_Util/Converters/MGToStr/TextureEnumConverter.h>
 #include <MG_Util/Converters/MGToStr/FramebufferEnumConverter.h>
 #include <MG_State/GLState/TextureState/TextureObjectBuffer.h>
@@ -30,8 +31,6 @@
 namespace MobileGL::MG_Backend::DirectGLES {
     constexpr Bool PREFER_MAP_BUFFER_RANGE_FOR_BUFFER_SYNC = false;
     constexpr const char* BASE_INSTANCE_UNIFORM_NAME = "mg_BaseInstance";
-    constexpr const char* ALPHA_TEST_ENABLED_UNIFORM_NAME = "mg_AlphaTestEnabled";
-    constexpr const char* ALPHA_TEST_FUNC_UNIFORM_NAME = "mg_AlphaTestFunc";
     constexpr const char* ALPHA_TEST_REF_UNIFORM_NAME = "mg_AlphaTestRef";
 
     static Uint ResolveBackendEsslVersion() {
@@ -1814,24 +1813,216 @@ namespace MobileGL::MG_Backend::DirectGLES {
 #ifdef TRACY_ENABLE
             ZoneScopedC(TRACY_ZONECOLOR_BACKEND);
 #endif
-            m_backendProgramId = g_GLESFuncs.glCreateProgram();
-            if (m_backendProgramId == 0) {
-                MGLOG_E("Failed to create program object in backend.");
-                MGLOG_E("ES glGetError(): %s", MG_Util::ConvertGLEnumToString(g_GLESFuncs.glGetError()).c_str());
-
-            } else {
-                MGLOG_D("Created backend program object with ID: %u", m_backendProgramId);
-            }
         }
 
         BackendProgramObjectImpl::~BackendProgramObjectImpl() {
 #ifdef TRACY_ENABLE
             ZoneScopedC(TRACY_ZONECOLOR_BACKEND);
 #endif
-            if (m_backendProgramId != 0) {
-                MGLOG_D("Deleting backend program object with ID: %u", m_backendProgramId);
-                g_GLESFuncs.glDeleteProgram(m_backendProgramId);
+            DestroyVariants();
+        }
+
+        BackendProgramObjectImpl::ProgramVariant* BackendProgramObjectImpl::GetActiveVariant() {
+            const auto it = m_programVariants.find(m_activeVariantKey);
+            if (it == m_programVariants.end()) {
+                return nullptr;
             }
+            return &it->second;
+        }
+
+        const BackendProgramObjectImpl::ProgramVariant* BackendProgramObjectImpl::GetActiveVariant() const {
+            const auto it = m_programVariants.find(m_activeVariantKey);
+            if (it == m_programVariants.end()) {
+                return nullptr;
+            }
+            return &it->second;
+        }
+
+        void BackendProgramObjectImpl::DestroyVariant(ProgramVariant& variant) {
+            if (variant.BackendGlobalUBOId != 0) {
+                g_GLESFuncs.glDeleteBuffers(1, &variant.BackendGlobalUBOId);
+                variant.BackendGlobalUBOId = 0;
+            }
+            if (variant.BackendProgramId != 0) {
+                g_GLESFuncs.glDeleteProgram(variant.BackendProgramId);
+                variant.BackendProgramId = 0;
+            }
+            variant.BaseInstanceUniformLocation = -1;
+            variant.AlphaTestRefUniformLocation = -1;
+        }
+
+        void BackendProgramObjectImpl::DestroyVariants() {
+            for (auto& [variantKey, variant] : m_programVariants) {
+                DestroyVariant(variant);
+            }
+            m_programVariants.clear();
+            m_activeVariantKey = kInvalidAlphaTestVariantKey;
+            m_isInitialized = false;
+        }
+
+        Uint32 BackendProgramObjectImpl::MakeAlphaTestVariantKey(Bool enabled, GLenum func) const {
+            if (g_GLESFuncs.glAlphaFuncQCOM != nullptr || !enabled || func == GL_ALWAYS) {
+                return kNoAlphaTestVariantKey;
+            }
+
+            switch (func) {
+            case GL_NEVER:
+            case GL_LESS:
+            case GL_EQUAL:
+            case GL_LEQUAL:
+            case GL_GREATER:
+            case GL_NOTEQUAL:
+            case GL_GEQUAL:
+                return static_cast<Uint32>(func);
+            default:
+                return kNoAlphaTestVariantKey;
+            }
+        }
+
+        Bool BackendProgramObjectImpl::BuildVariant(
+            const SharedPtr<MG_State::GLState::ProgramObject>& stateProgramObject,
+            Uint32 variantKey,
+            ProgramVariant* outVariant) {
+            if (!stateProgramObject || !outVariant) {
+                return false;
+            }
+
+            const Bool alphaCompatEnabled = variantKey != kNoAlphaTestVariantKey;
+            const GLenum alphaTestFunc = alphaCompatEnabled ? static_cast<GLenum>(variantKey) : GL_ALWAYS;
+
+            ProgramVariant variant;
+            variant.BackendProgramId = g_GLESFuncs.glCreateProgram();
+            if (variant.BackendProgramId == 0) {
+                MGLOG_E("Failed to create backend program variant for state program %u.",
+                        stateProgramObject->GetExternalIndex());
+                MGLOG_E("ES glGetError(): %s", MG_Util::ConvertGLEnumToString(g_GLESFuncs.glGetError()).c_str());
+                return false;
+            }
+
+            auto& attachedShaders = stateProgramObject->GetAttachedShaders();
+            auto& shaderSpirvs = stateProgramObject->GetGeneratedSpirv();
+            MGLOG_D("Building backend program variant key=%u for state program %u -> backend %u",
+                    variantKey,
+                    stateProgramObject->GetExternalIndex(),
+                    variant.BackendProgramId);
+
+            for (Int index = 0; index < static_cast<Int>(attachedShaders.size()); ++index) {
+                auto& shader = attachedShaders[static_cast<SizeT>(index)];
+                GLenum glShaderType = MG_Util::ConvertShaderStageToGLEnum(shader->GetShaderStage());
+                GLuint backendShaderId = g_GLESFuncs.glCreateShader(glShaderType);
+                if (backendShaderId == 0) {
+                    MGLOG_E("Failed to create backend shader for variant key=%u on program %u.",
+                            variantKey,
+                            stateProgramObject->GetExternalIndex());
+                    DestroyVariant(variant);
+                    return false;
+                }
+
+                String source;
+                auto& spirvCode = shaderSpirvs[static_cast<SizeT>(index)];
+
+                MG_Util::ShaderTranspiler::SpvcSession spvcSession(spirvCode,
+                    MG_Util::ShaderTranspiler::SessionUsageBit::Transpile);
+
+                spvc_compiler_options options;
+                spvcSession.CreateOptions(&options);
+                spvc_compiler_options_set_uint(options, SPVC_COMPILER_OPTION_GLSL_VERSION,
+                                               ResolveBackendEsslVersion());
+                spvc_compiler_options_set_bool(options, SPVC_COMPILER_OPTION_GLSL_ES, SPVC_TRUE);
+                spvc_compiler_options_set_bool(options, SPVC_COMPILER_OPTION_GLSL_VULKAN_SEMANTICS, SPVC_FALSE);
+                spvcSession.SetOptions(options);
+
+                const char* result = nullptr;
+                spvcSession.Compile(&result);
+                if (!result) {
+                    MGLOG_E("Failed to transpile shader to GLSL for backend variant key=%u on program %u: %s",
+                            variantKey,
+                            stateProgramObject->GetExternalIndex(),
+                            spvcSession.GetLastErrorString());
+                    g_GLESFuncs.glDeleteShader(backendShaderId);
+                    DestroyVariant(variant);
+                    return false;
+                }
+
+                source = result;
+                source = RemoveLayoutBinding(source);
+                source = ProcessOutColorLocations(source);
+                source = ForceFlatIntegerVaryings(source, glShaderType);
+                source = EmulateBaseInstanceInVertexShader(std::move(source), glShaderType);
+                source = ForceSupporterOutput(source);
+                source = InjectGenericAlphaTestCompat(std::move(source), glShaderType, alphaCompatEnabled,
+                                                      alphaTestFunc);
+                source = ClampNormFallbackOutputs(std::move(source), glShaderType,
+                                                  m_snormFallbackClampOutputMask,
+                                                  m_unormFallbackClampOutputMask);
+                source = PackPhotonSharedVec3Memory(std::move(source));
+
+                String findStr = "1000000.0";
+                String replaceStr = "65500.0";
+                auto pos = source.find(findStr);
+                while (pos != String::npos) {
+                    MGLOG_D("Applying patch #2 to Photon...");
+                    source.replace(pos, findStr.length(), replaceStr);
+                    pos = source.find(findStr, pos);
+                }
+
+                const char* sourceCStr = source.c_str();
+                MGLOG_D("Setting shader source for backend shader ID: %u\nsrc:\n%s", backendShaderId, sourceCStr);
+                g_GLESFuncs.glShaderSource(backendShaderId, 1, &sourceCStr, nullptr);
+                g_GLESFuncs.glCompileShader(backendShaderId);
+
+                GLint compileStatus = GL_FALSE;
+                g_GLESFuncs.glGetShaderiv(backendShaderId, GL_COMPILE_STATUS, &compileStatus);
+                if (compileStatus == GL_FALSE) {
+                    GLint logLength = 0;
+                    g_GLESFuncs.glGetShaderiv(backendShaderId, GL_INFO_LOG_LENGTH, &logLength);
+                    Vector<GLchar> log(logLength);
+                    g_GLESFuncs.glGetShaderInfoLog(backendShaderId, logLength, nullptr, log.data());
+                    MGLOG_E("Shader compilation failed for backend variant key=%u shader %u: %s",
+                            variantKey,
+                            backendShaderId,
+                            log.empty() ? "" : log.data());
+                    g_GLESFuncs.glDeleteShader(backendShaderId);
+                    DestroyVariant(variant);
+                    return false;
+                }
+
+                g_GLESFuncs.glAttachShader(variant.BackendProgramId, backendShaderId);
+                g_GLESFuncs.glDeleteShader(backendShaderId);
+            }
+
+            g_GLESFuncs.glLinkProgram(variant.BackendProgramId);
+
+            GLint linkStatus = GL_FALSE;
+            g_GLESFuncs.glGetProgramiv(variant.BackendProgramId, GL_LINK_STATUS, &linkStatus);
+            if (linkStatus != GL_TRUE) {
+                GLint logLength = 0;
+                g_GLESFuncs.glGetProgramiv(variant.BackendProgramId, GL_INFO_LOG_LENGTH, &logLength);
+                Vector<GLchar> log(logLength);
+                g_GLESFuncs.glGetProgramInfoLog(variant.BackendProgramId, logLength, nullptr, log.data());
+                MGLOG_E("Program %u variant key=%u link failed for backend %u: %s",
+                        stateProgramObject->GetExternalIndex(),
+                        variantKey,
+                        variant.BackendProgramId,
+                        log.empty() ? "" : log.data());
+                DestroyVariant(variant);
+                return false;
+            }
+
+            variant.BaseInstanceUniformLocation =
+                g_GLESFuncs.glGetUniformLocation(variant.BackendProgramId, BASE_INSTANCE_UNIFORM_NAME);
+            variant.AlphaTestRefUniformLocation =
+                g_GLESFuncs.glGetUniformLocation(variant.BackendProgramId, ALPHA_TEST_REF_UNIFORM_NAME);
+
+            if (stateProgramObject->GetUBOSize() > 0) {
+                g_GLESFuncs.glGenBuffers(1, &variant.BackendGlobalUBOId);
+                g_GLESFuncs.glBindBuffer(GL_UNIFORM_BUFFER, variant.BackendGlobalUBOId);
+                g_GLESFuncs.glBufferData(GL_UNIFORM_BUFFER, stateProgramObject->GetUBOSize(), nullptr, GL_STREAM_DRAW);
+                g_GLESFuncs.glBindBuffer(GL_UNIFORM_BUFFER, 0);
+            }
+
+            *outVariant = variant;
+            return true;
         }
 
         void BackendProgramObjectImpl::SyncToBackend(
@@ -1850,189 +2041,77 @@ namespace MobileGL::MG_Backend::DirectGLES {
                 return;
             }
 
-            MGLOG_D("Syncing program to backend. State program ID: %u, Backend ID: %u",
-                    stateProgramObject->GetExternalIndex(), m_backendProgramId);
+            MGLOG_D("Syncing program to backend. State program ID: %u", stateProgramObject->GetExternalIndex());
+            DestroyVariants();
+            m_stateProgramObject = stateProgramObject;
             m_snormFallbackClampOutputMask = g_snormFallbackClampOutputMask;
             m_unormFallbackClampOutputMask = g_unormFallbackClampOutputMask;
+            PrepareAlphaTestState(MG_State::pGLContext->IsCapabilityEnabled(CapabilityInput::AlphaTest),
+                                  MG_Util::ConvertDepthTestFuncToGLEnum(MG_State::pGLContext->GetAlphaFunc()));
+            m_isInitialized = GetActiveVariant() != nullptr;
+            MGLOG_D("Program sync completed. active backend ID %u", GetBackendProgramId());
+        }
 
-            // Detach all existing shaders
-            GLint attachedCount = 0;
-            g_GLESFuncs.glGetProgramiv(m_backendProgramId, GL_ATTACHED_SHADERS, &attachedCount);
-            MGLOG_D("Currently attached shaders count: %d", attachedCount);
-
-            if (attachedCount > 0) {
-                Vector<GLuint> attachedShaders(attachedCount);
-                GLsizei actualCount;
-                g_GLESFuncs.glGetAttachedShaders(m_backendProgramId, attachedCount, &actualCount,
-                                                 attachedShaders.data());
-                MGLOG_D("Detaching %d existing shaders from program %u", actualCount, m_backendProgramId);
-
-                for (GLsizei i = 0; i < actualCount; ++i) {
-                    MGLOG_D("Detaching shader ID: %u from program %u", attachedShaders[i], m_backendProgramId);
-                    g_GLESFuncs.glDetachShader(m_backendProgramId, attachedShaders[i]);
-                }
+        void BackendProgramObjectImpl::PrepareAlphaTestState(Bool enabled, GLenum func) {
+            const Uint32 variantKey = MakeAlphaTestVariantKey(enabled, func);
+            const auto it = m_programVariants.find(variantKey);
+            if (it != m_programVariants.end()) {
+                m_activeVariantKey = variantKey;
+                return;
             }
 
-            // Attach current shaders
-            auto& attachedShaders = stateProgramObject->GetAttachedShaders();
-            MGLOG_D("Attaching %zu shaders to program %u", attachedShaders.size(), m_backendProgramId);
-            for (auto& shader : attachedShaders) {
-                const auto& src = shader->GetShaderSource();
-                const auto& stage =
-                    MG_Util::ConvertGLEnumToString(MG_Util::ConvertShaderStageToGLEnum(shader->GetShaderStage()));
-                MGLOG_D("Original src @ %s: \n", stage.c_str());
-                MGLOG_D("%s:", src.empty() ? "" : src.c_str());
-            }
-            auto& shaderSpirvs = stateProgramObject->GetGeneratedSpirv();
-
-            for (int index = 0; index < attachedShaders.size(); ++index) {
-                auto& shader = attachedShaders[index];
-                GLenum glShaderType = MG_Util::ConvertShaderStageToGLEnum(shader->GetShaderStage());
-                GLuint backendShaderId = g_GLESFuncs.glCreateShader(glShaderType);
-
-                if (backendShaderId == 0) {
-                    MGLOG_E("Failed to create backend shader for attachment.");
-                    continue;
-                }
-                String source;
-                auto& spirvCode = shaderSpirvs[index];
-
-                MG_Util::ShaderTranspiler::SpvcSession spvcSession(spirvCode,
-                    MG_Util::ShaderTranspiler::SessionUsageBit::Transpile);
-
-                spvc_compiler_options options;
-                spvcSession.CreateOptions(&options);
-
-                spvc_compiler_options_set_uint(options, SPVC_COMPILER_OPTION_GLSL_VERSION,
-                                               ResolveBackendEsslVersion());
-                spvc_compiler_options_set_bool(options, SPVC_COMPILER_OPTION_GLSL_ES, SPVC_TRUE);
-                spvc_compiler_options_set_bool(options, SPVC_COMPILER_OPTION_GLSL_VULKAN_SEMANTICS, SPVC_FALSE);
-
-                spvcSession.SetOptions(options);
-
-                const char* result = nullptr;
-                spvcSession.Compile(&result);
-
-                if (!result) {
-                    MG_Util::ShaderTranspiler::ResultInfo r;
-                    r.log += "Failed to compile the shader to GLSL: \n";
-                    r.log += spvcSession.GetLastErrorString();
-                    r.errc = -5;
-                    MGLOG_E("%s", r.log.c_str());
-                    continue;
-                }
-
-                source = result;
-
-                source = RemoveLayoutBinding(source);
-                source = ProcessOutColorLocations(source);
-                source = ForceFlatIntegerVaryings(source, glShaderType);
-                source = EmulateBaseInstanceInVertexShader(std::move(source), glShaderType);
-                source = ForceSupporterOutput(source);
-                if (g_GLESFuncs.glAlphaFuncQCOM == nullptr) {
-                    source = InjectGenericAlphaTestCompat(std::move(source), glShaderType);
-                }
-                source = ClampNormFallbackOutputs(std::move(source), glShaderType,
-                                                  m_snormFallbackClampOutputMask,
-                                                  m_unormFallbackClampOutputMask);
-                source = PackPhotonSharedVec3Memory(std::move(source));
-
-                // Patch for Photon compiler precision issue
-                String findStr = "1000000.0";
-                String replaceStr = "65500.0";
-                auto pos = source.find(findStr);
-                while (pos != String::npos) {
-                    MGLOG_D("Applying patch #2 to Photon...");
-                    source.replace(pos, findStr.length(), replaceStr);
-                    pos = source.find(findStr, pos);
-                }
-
-                const char* sourceCStr = source.c_str();
-                MGLOG_D("Setting shader source for backend shader ID: %u\nsrc:\n%s", backendShaderId, sourceCStr);
-                g_GLESFuncs.glShaderSource(backendShaderId, 1, &sourceCStr, nullptr);
-                g_GLESFuncs.glCompileShader(backendShaderId);
-
-                GLint compileStatus;
-                g_GLESFuncs.glGetShaderiv(backendShaderId, GL_COMPILE_STATUS, &compileStatus);
-                if (compileStatus == GL_FALSE) {
-                    GLint logLength;
-                    g_GLESFuncs.glGetShaderiv(backendShaderId, GL_INFO_LOG_LENGTH, &logLength);
-                    Vector<GLchar> log(logLength);
-                    g_GLESFuncs.glGetShaderInfoLog(backendShaderId, logLength, nullptr, log.data());
-                    MGLOG_E("Shader compilation failed for backend ID %u: %s", backendShaderId, log.data());
-                    continue;
-                }
-
-                MGLOG_D("Attaching shader ID: %u to program %u", backendShaderId, m_backendProgramId);
-                g_GLESFuncs.glAttachShader(m_backendProgramId, backendShaderId);
-
-                MGLOG_D("Processed shader source length: %zu", source.length());
+            const auto stateProgramObject = m_stateProgramObject.lock();
+            if (!stateProgramObject) {
+                MGLOG_E("State program object expired while preparing alpha-test variant key=%u.", variantKey);
+                return;
             }
 
-            // Link program
-            MGLOG_D("Linking program %u", m_backendProgramId);
-            g_GLESFuncs.glLinkProgram(m_backendProgramId);
-
-            GLint linkStatus;
-            g_GLESFuncs.glGetProgramiv(m_backendProgramId, GL_LINK_STATUS, &linkStatus);
-            if (linkStatus != GL_TRUE) {
-                GLint logLength;
-                g_GLESFuncs.glGetProgramiv(m_backendProgramId, GL_INFO_LOG_LENGTH, &logLength);
-                Vector<GLchar> log(logLength);
-                g_GLESFuncs.glGetProgramInfoLog(m_backendProgramId, logLength, nullptr, log.data());
-                MGLOG_E("Program %u linking failed for %u: %s", stateProgramObject->GetExternalIndex(),
-                        m_backendProgramId, log.data());
-            } else {
-                MGLOG_D("Program linked successfully. ID: %u", m_backendProgramId);
-            }
-            m_baseInstanceUniformLocation = g_GLESFuncs.glGetUniformLocation(m_backendProgramId,
-                                                                             BASE_INSTANCE_UNIFORM_NAME);
-            m_alphaTestEnabledUniformLocation = g_GLESFuncs.glGetUniformLocation(m_backendProgramId,
-                                                                                 ALPHA_TEST_ENABLED_UNIFORM_NAME);
-            m_alphaTestFuncUniformLocation = g_GLESFuncs.glGetUniformLocation(m_backendProgramId,
-                                                                              ALPHA_TEST_FUNC_UNIFORM_NAME);
-            m_alphaTestRefUniformLocation = g_GLESFuncs.glGetUniformLocation(m_backendProgramId,
-                                                                             ALPHA_TEST_REF_UNIFORM_NAME);
-
-            // Create global UBO
-            if (stateProgramObject->GetUBOSize() > 0) {
-                g_GLESFuncs.glGenBuffers(1, &m_backendGlobalUBOId);
-                g_GLESFuncs.glBindBuffer(GL_UNIFORM_BUFFER, m_backendGlobalUBOId);
-                g_GLESFuncs.glBufferData(GL_UNIFORM_BUFFER, stateProgramObject->GetUBOSize(), nullptr, GL_STREAM_DRAW);
-                g_GLESFuncs.glBindBuffer(GL_UNIFORM_BUFFER, 0);
-            } else {
-                m_backendGlobalUBOId = 0;
+            ProgramVariant variant;
+            if (!BuildVariant(stateProgramObject, variantKey, &variant)) {
+                MGLOG_E("Failed to build backend alpha-test variant key=%u for state program %u.",
+                        variantKey,
+                        stateProgramObject->GetExternalIndex());
+                return;
             }
 
+            m_programVariants.emplace(variantKey, std::move(variant));
+            m_activeVariantKey = variantKey;
             m_isInitialized = true;
-            MGLOG_D("Program sync completed. backend ID %u", m_backendProgramId);
         }
 
         void BackendProgramObjectImpl::Use() const {
 #ifdef TRACY_ENABLE
             ZoneScopedC(TRACY_ZONECOLOR_BACKEND);
 #endif
-            MGLOG_D("Using program %u", m_backendProgramId);
-            g_GLESFuncs.glUseProgram(m_backendProgramId);
+            const auto* activeVariant = GetActiveVariant();
+            const Uint backendProgramId = activeVariant ? activeVariant->BackendProgramId : 0;
+            MGLOG_D("Using program %u", backendProgramId);
+            g_GLESFuncs.glUseProgram(backendProgramId);
         }
 
         void BackendProgramObjectImpl::SetBaseInstance(Uint32 baseInstance) const {
-            if (m_baseInstanceUniformLocation < 0) {
+            const auto* activeVariant = GetActiveVariant();
+            if (!activeVariant || activeVariant->BaseInstanceUniformLocation < 0) {
                 return;
             }
-            g_GLESFuncs.glUniform1i(m_baseInstanceUniformLocation, static_cast<GLint>(baseInstance));
+            g_GLESFuncs.glUniform1i(activeVariant->BaseInstanceUniformLocation, static_cast<GLint>(baseInstance));
         }
 
-        void BackendProgramObjectImpl::SetAlphaTestState(Bool enabled, GLenum func, Float ref) const {
-            if (m_alphaTestEnabledUniformLocation >= 0) {
-                g_GLESFuncs.glUniform1i(m_alphaTestEnabledUniformLocation, enabled ? 1 : 0);
+        void BackendProgramObjectImpl::SetAlphaTestRef(Float ref) const {
+            const auto* activeVariant = GetActiveVariant();
+            if (activeVariant && activeVariant->AlphaTestRefUniformLocation >= 0) {
+                g_GLESFuncs.glUniform1f(activeVariant->AlphaTestRefUniformLocation, ref);
             }
-            if (m_alphaTestFuncUniformLocation >= 0) {
-                g_GLESFuncs.glUniform1i(m_alphaTestFuncUniformLocation, static_cast<GLint>(func));
-            }
-            if (m_alphaTestRefUniformLocation >= 0) {
-                g_GLESFuncs.glUniform1f(m_alphaTestRefUniformLocation, ref);
-            }
+        }
+
+        Uint BackendProgramObjectImpl::GetBackendProgramId() const {
+            const auto* activeVariant = GetActiveVariant();
+            return activeVariant ? activeVariant->BackendProgramId : 0;
+        }
+
+        Uint BackendProgramObjectImpl::GetBackendGlobalUBOId() const {
+            const auto* activeVariant = GetActiveVariant();
+            return activeVariant ? activeVariant->BackendGlobalUBOId : 0;
         }
     } // namespace PrgramImpl
 

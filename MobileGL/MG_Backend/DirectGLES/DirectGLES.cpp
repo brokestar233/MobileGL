@@ -916,11 +916,12 @@ namespace MobileGL::MG_Backend::DirectGLES {
 #endif
             const auto& backendProgramIt = PrgramImpl::g_backendProgramObjects.find(currentProgram.get());
             if (backendProgramIt != PrgramImpl::g_backendProgramObjects.end()) {
+                const Bool alphaTestEnabled = MG_State::pGLContext->IsCapabilityEnabled(CapabilityInput::AlphaTest);
+                const GLenum alphaTestFunc =
+                    MG_Util::ConvertDepthTestFuncToGLEnum(MG_State::pGLContext->GetAlphaFunc());
+                backendProgramIt->second->PrepareAlphaTestState(alphaTestEnabled, alphaTestFunc);
                 backendProgramIt->second->Use();
-                backendProgramIt->second->SetAlphaTestState(
-                    MG_State::pGLContext->IsCapabilityEnabled(CapabilityInput::AlphaTest),
-                    MG_Util::ConvertDepthTestFuncToGLEnum(MG_State::pGLContext->GetAlphaFunc()),
-                    MG_State::pGLContext->GetAlphaRef());
+                backendProgramIt->second->SetAlphaTestRef(MG_State::pGLContext->GetAlphaRef());
                 auto backendProgramId = backendProgramIt->second->GetBackendProgramId();
 
                 // Global UBO

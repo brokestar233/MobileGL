@@ -346,14 +346,19 @@ namespace MobileGL::MG_Backend::DirectGLES {
             return result;
         }
 
-        String InjectGenericAlphaTestCompat(String glslCode, GLenum shaderType) {
+        String InjectGenericAlphaTestCompat(String glslCode, GLenum shaderType, Bool alphaTestEnabled,
+                                            GLenum alphaTestFunc) {
 #ifdef TRACY_ENABLE
             ZoneScopedC(TRACY_ZONECOLOR_BACKEND);
 #endif
             if (shaderType != GL_FRAGMENT_SHADER) {
                 return glslCode;
             }
-            if (glslCode.find("mg_AlphaTestEnabled") != String::npos) {
+            if (!alphaTestEnabled || alphaTestFunc == GL_ALWAYS) {
+                return glslCode;
+            }
+            if (glslCode.find("MG_ALPHA_TEST_PASSES") != String::npos ||
+                glslCode.find("mg_AlphaTestRef") != String::npos) {
                 return glslCode;
             }
             if (glslCode.find("discard;") != String::npos) {
@@ -399,23 +404,48 @@ namespace MobileGL::MG_Backend::DirectGLES {
 
             const SizeT injectPos = FindAfterVersionAndPrecisionDirectives(glslCode);
 
-            glslCode.insert(
-                injectPos,
-                "uniform int mg_AlphaTestEnabled;\n"
-                "uniform int mg_AlphaTestFunc;\n"
-                "uniform float mg_AlphaTestRef;\n"
-                "bool mg_PassesAlphaTest(float alpha) {\n"
-                "    const float mg_AlphaEpsilon = 0.001;\n"
-                "    if (mg_AlphaTestEnabled == 0) return true;\n"
-                "    if (mg_AlphaTestFunc == 512) return false;\n"
-                "    if (mg_AlphaTestFunc == 513) return alpha < mg_AlphaTestRef;\n"
-                "    if (mg_AlphaTestFunc == 514) return abs(alpha - mg_AlphaTestRef) < mg_AlphaEpsilon;\n"
-                "    if (mg_AlphaTestFunc == 515) return alpha <= mg_AlphaTestRef;\n"
-                "    if (mg_AlphaTestFunc == 516) return alpha > mg_AlphaTestRef;\n"
-                "    if (mg_AlphaTestFunc == 517) return abs(alpha - mg_AlphaTestRef) >= mg_AlphaEpsilon;\n"
-                "    if (mg_AlphaTestFunc == 518) return alpha >= mg_AlphaTestRef;\n"
-                "    return true;\n"
-                "}\n");
+            String alphaCompatPrelude;
+            switch (alphaTestFunc) {
+            case GL_NEVER:
+                alphaCompatPrelude = "#define MG_ALPHA_TEST_PASSES(alpha) false\n";
+                break;
+            case GL_LESS:
+                alphaCompatPrelude =
+                    "uniform float mg_AlphaTestRef;\n"
+                    "#define MG_ALPHA_TEST_PASSES(alpha) ((alpha) < mg_AlphaTestRef)\n";
+                break;
+            case GL_EQUAL:
+                alphaCompatPrelude =
+                    "uniform float mg_AlphaTestRef;\n"
+                    "#define MG_ALPHA_TEST_EPSILON 0.001\n"
+                    "#define MG_ALPHA_TEST_PASSES(alpha) (abs((alpha) - mg_AlphaTestRef) < MG_ALPHA_TEST_EPSILON)\n";
+                break;
+            case GL_LEQUAL:
+                alphaCompatPrelude =
+                    "uniform float mg_AlphaTestRef;\n"
+                    "#define MG_ALPHA_TEST_PASSES(alpha) ((alpha) <= mg_AlphaTestRef)\n";
+                break;
+            case GL_GREATER:
+                alphaCompatPrelude =
+                    "uniform float mg_AlphaTestRef;\n"
+                    "#define MG_ALPHA_TEST_PASSES(alpha) ((alpha) > mg_AlphaTestRef)\n";
+                break;
+            case GL_NOTEQUAL:
+                alphaCompatPrelude =
+                    "uniform float mg_AlphaTestRef;\n"
+                    "#define MG_ALPHA_TEST_EPSILON 0.001\n"
+                    "#define MG_ALPHA_TEST_PASSES(alpha) (abs((alpha) - mg_AlphaTestRef) >= MG_ALPHA_TEST_EPSILON)\n";
+                break;
+            case GL_GEQUAL:
+                alphaCompatPrelude =
+                    "uniform float mg_AlphaTestRef;\n"
+                    "#define MG_ALPHA_TEST_PASSES(alpha) ((alpha) >= mg_AlphaTestRef)\n";
+                break;
+            default:
+                return glslCode;
+            }
+
+            glslCode.insert(injectPos, alphaCompatPrelude);
 
             const SizeT mainPos = glslCode.find("void main");
             if (mainPos == String::npos) {
@@ -461,7 +491,7 @@ namespace MobileGL::MG_Backend::DirectGLES {
 
             glslCode += "\nvoid main() {\n";
             glslCode += "    mg_user_main();\n";
-            glslCode += "    if (!mg_PassesAlphaTest(" + primaryOutputExpr + ".a)) {\n";
+            glslCode += "    if (!MG_ALPHA_TEST_PASSES(" + primaryOutputExpr + ".a)) {\n";
             glslCode += "        discard;\n";
             glslCode += "    }\n";
             glslCode += "}\n";

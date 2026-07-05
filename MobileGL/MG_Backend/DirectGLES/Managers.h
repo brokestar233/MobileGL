@@ -291,21 +291,37 @@ namespace MobileGL::MG_Backend::DirectGLES {
             BackendProgramObjectImpl();
             ~BackendProgramObjectImpl();
             void SyncToBackend(const SharedPtr<MG_State::GLState::ProgramObject>& stateProgramObject);
+            void PrepareAlphaTestState(Bool enabled, GLenum func);
             void Use() const;
             void SetBaseInstance(Uint32 baseInstance) const;
-            void SetAlphaTestState(Bool enabled, GLenum func, Float ref) const;
-            Uint GetBackendProgramId() const { return m_backendProgramId; }
-            Uint GetBackendGlobalUBOId() const { return m_backendGlobalUBOId; }
+            void SetAlphaTestRef(Float ref) const;
+            Uint GetBackendProgramId() const;
+            Uint GetBackendGlobalUBOId() const;
             Uint32 GetSnormFallbackClampOutputMask() const { return m_snormFallbackClampOutputMask; }
             Uint32 GetUnormFallbackClampOutputMask() const { return m_unormFallbackClampOutputMask; }
 
         private:
-            Uint m_backendProgramId = 0;
-            Uint m_backendGlobalUBOId = 0;
-            Int m_baseInstanceUniformLocation = -1;
-            Int m_alphaTestEnabledUniformLocation = -1;
-            Int m_alphaTestFuncUniformLocation = -1;
-            Int m_alphaTestRefUniformLocation = -1;
+            struct ProgramVariant {
+                Uint BackendProgramId = 0;
+                Uint BackendGlobalUBOId = 0;
+                Int BaseInstanceUniformLocation = -1;
+                Int AlphaTestRefUniformLocation = -1;
+            };
+
+            static constexpr Uint32 kNoAlphaTestVariantKey = 0;
+            static constexpr Uint32 kInvalidAlphaTestVariantKey = 0xFFFFFFFFu;
+
+            ProgramVariant* GetActiveVariant();
+            const ProgramVariant* GetActiveVariant() const;
+            void DestroyVariant(ProgramVariant& variant);
+            void DestroyVariants();
+            Uint32 MakeAlphaTestVariantKey(Bool enabled, GLenum func) const;
+            Bool BuildVariant(const SharedPtr<MG_State::GLState::ProgramObject>& stateProgramObject,
+                              Uint32 variantKey, ProgramVariant* outVariant);
+
+            std::weak_ptr<MG_State::GLState::ProgramObject> m_stateProgramObject;
+            UnorderedMap<Uint32, ProgramVariant> m_programVariants;
+            Uint32 m_activeVariantKey = kInvalidAlphaTestVariantKey;
             Uint32 m_snormFallbackClampOutputMask = 0;
             Uint32 m_unormFallbackClampOutputMask = 0;
             Bool m_isInitialized = false;
