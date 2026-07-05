@@ -49,11 +49,16 @@ namespace MobileGL {
                 return true;
             }
 
+            void TextureObjectBase::MarkBackendSyncDirty() {
+                ++m_backendSyncVersion;
+            }
+
             void TextureObjectBase::SetInternalFormat(TextureInternalFormat format) {
                 if (format == m_internalFormat) return;
 
                 m_internalFormat = format;
                 ++m_textureParamsVersion;
+                MarkBackendSyncDirty();
             }
 
             Uint TextureObjectBase::GetExternalIndex() const {
@@ -201,10 +206,15 @@ namespace MobileGL {
                     m_levelRange.y() = std::min(std::max(m_levelRange.y(), m_levelRange.x()), m_immutableLevels - 1);
                 }
                 ++m_textureParamsVersion;
+                MarkBackendSyncDirty();
             }
 
             Uint16 TextureObjectBase::GetTextureParamsVersion() const {
                 return m_textureParamsVersion;
+            }
+
+            Uint64 TextureObjectBase::GetBackendSyncVersion() const {
+                return m_backendSyncVersion;
             }
 
             Int TextureObjectBase::GetSamples() const {
@@ -212,7 +222,9 @@ namespace MobileGL {
             }
 
             void TextureObjectBase::SetSamples(Int samples) {
+                if (m_samples == samples) return;
                 m_samples = samples;
+                MarkBackendSyncDirty();
             }
 
             Bool TextureObjectBase::HasFixedSampleLocations() const {
@@ -220,7 +232,9 @@ namespace MobileGL {
             }
 
             void TextureObjectBase::SetFixedSampleLocations(Bool fixedSampleLocations) {
+                if (m_fixedSampleLocations == fixedSampleLocations) return;
                 m_fixedSampleLocations = fixedSampleLocations;
+                MarkBackendSyncDirty();
             }
 
             Uint64 TextureObjectBase::GetLifetimeId() const {
@@ -244,11 +258,13 @@ namespace MobileGL {
             void TextureObjectWithOneMipmap::AllocateStorage(TextureUploadTarget uploadTarget, Uint mipmapLevel,
                                                              MipmapInput input) {
                 m_textureStorage.AllocateLevel(GetIndexOfTextureUploadTarget(uploadTarget), mipmapLevel, input);
+                MarkBackendSyncDirty();
             }
 
             void TextureObjectWithOneMipmap::UpdateMipmapSubData(TextureUploadTarget uploadTarget, Uint mipmapLevel,
                                                                  DataPtr input) {
                 m_textureStorage.UpdateSubData(GetIndexOfTextureUploadTarget(uploadTarget), mipmapLevel, input);
+                MarkBackendSyncDirty();
             }
 
             void* TextureObjectWithOneMipmap::MapMipmapData(TextureUploadTarget uploadTarget, Uint mipmapLevel) {
@@ -258,6 +274,9 @@ namespace MobileGL {
             void TextureObjectWithOneMipmap::MarkStorageDirty(TextureUploadTarget uploadTarget, Uint mipmapLevel,
                                                               Bool dirty) {
                 m_textureStorage.MarkDirty(GetIndexOfTextureUploadTarget(uploadTarget), mipmapLevel, dirty);
+                if (dirty) {
+                    MarkBackendSyncDirty();
+                }
             }
 
             Bool TextureObjectWithOneMipmap::IsStorageDirty(TextureUploadTarget uploadTarget, Uint mipmapLevel) const {

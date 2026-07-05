@@ -649,6 +649,7 @@ namespace MobileGL::MG_Backend::DirectGLES {
             m_isInitialized = false;
             m_backendStorageImmutable = false;
             m_prevTextureInfo = {};
+            m_syncedStateTextureVersion = 0;
         }
 
         class ScopedDefaultUnpackState {
@@ -816,6 +817,14 @@ namespace MobileGL::MG_Backend::DirectGLES {
                 MGLOG_D("Texture object with ID: %u is not complete, skipping sync.",
                         stateTextureObject->GetExternalIndex());
                 return;
+            }
+
+            if (stateTextureObject->GetStorageType() == TextureStorageType::Mipmap) {
+                const Uint64 textureSyncVersion = stateTextureObject->GetBackendSyncVersion();
+                if (m_isInitialized &&
+                    m_syncedStateTextureVersion == textureSyncVersion) {
+                    return;
+                }
             }
 
             Bind(target);
@@ -1247,6 +1256,9 @@ namespace MobileGL::MG_Backend::DirectGLES {
             });
 
             m_prevTextureInfo = currentTextureInfo;
+            if (stateTextureObject->GetStorageType() == TextureStorageType::Mipmap) {
+                m_syncedStateTextureVersion = stateTextureObject->GetBackendSyncVersion();
+            }
         }
 
         void BackendTextureObject::SyncBuiltinSamplerToBackend(

@@ -222,6 +222,7 @@ namespace MobileGL::MG_Backend::DirectGLES {
             Bool m_imageBindableStorageRequired = false;
             Bool m_backendStorageImmutable = false;
             StateTextureBasicInfo m_prevTextureInfo;
+            Uint64 m_syncedStateTextureVersion = 0;
             SamplerParameters m_cacheSamplerParameters;
             UintVec2 m_cacheLodRange = {0, 1000};
             FloatVec4 m_cacheBorderColor = {0.0f, 0.0f, 0.0f, 0.0f};

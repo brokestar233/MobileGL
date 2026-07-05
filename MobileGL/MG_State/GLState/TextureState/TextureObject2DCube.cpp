@@ -29,11 +29,13 @@ namespace MobileGL {
             void TextureObject2DCube::AllocateStorage(TextureUploadTarget uploadTarget, Uint mipmapLevel,
                                                       MipmapInput input) {
                 m_textureStorage.AllocateLevel(GetIndexOfTextureUploadTarget(uploadTarget), mipmapLevel, input);
+                MarkBackendSyncDirty();
             }
 
             void TextureObject2DCube::UpdateMipmapSubData(TextureUploadTarget uploadTarget, Uint mipmapLevel,
                                                           DataPtr input) {
                 m_textureStorage.UpdateSubData(GetIndexOfTextureUploadTarget(uploadTarget), mipmapLevel, input);
+                MarkBackendSyncDirty();
             }
 
             void* TextureObject2DCube::MapMipmapData(TextureUploadTarget uploadTarget, Uint mipmapLevel) {
@@ -42,6 +44,9 @@ namespace MobileGL {
 
             void TextureObject2DCube::MarkStorageDirty(TextureUploadTarget uploadTarget, Uint mipmapLevel, bool dirty) {
                 m_textureStorage.MarkDirty(GetIndexOfTextureUploadTarget(uploadTarget), mipmapLevel, dirty);
+                if (dirty) {
+                    MarkBackendSyncDirty();
+                }
             }
 
             bool TextureObject2DCube::IsStorageDirty(TextureUploadTarget uploadTarget, Uint mipmapLevel) const {

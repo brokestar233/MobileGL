@@ -47,6 +47,7 @@ namespace MobileGL::MG_State::GLState {
         virtual Uint GetImmutableLevels() const = 0;
         virtual void SetImmutableLevels(Uint levels) = 0;
         virtual Uint16 GetTextureParamsVersion() const = 0;
+        virtual Uint64 GetBackendSyncVersion() const = 0;
         virtual Int GetSamples() const = 0;
         virtual void SetSamples(Int samples) = 0;
         virtual Bool HasFixedSampleLocations() const = 0;
@@ -86,6 +87,7 @@ namespace MobileGL::MG_State::GLState {
         Uint GetImmutableLevels() const override;
         void SetImmutableLevels(Uint levels) override;
         Uint16 GetTextureParamsVersion() const override;
+        Uint64 GetBackendSyncVersion() const override;
         Int GetSamples() const override;
         void SetSamples(Int samples) override;
         Bool HasFixedSampleLocations() const override;
@@ -94,6 +96,7 @@ namespace MobileGL::MG_State::GLState {
 
     protected:
         static Uint64 AllocateLifetimeId();
+        void MarkBackendSyncDirty();
 
         const Uint m_externalIndex;
         const Uint64 m_lifetimeId;
@@ -108,6 +111,7 @@ namespace MobileGL::MG_State::GLState {
         UintVec2 m_levelRange = {0, 1000};
         Uint m_immutableLevels = 0;
         Uint16 m_textureParamsVersion = 0;
+        Uint64 m_backendSyncVersion = 1;
         Int m_samples = 0;
         Bool m_fixedSampleLocations = true;
     };
