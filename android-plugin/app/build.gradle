@@ -2,12 +2,17 @@ plugins {
     id 'com.android.application'
 }
 
-def mobileGlEnvString = { backendType ->
+def mobileGlEnvString = { backendType, extraEnv = [:] ->
+    (
     [
             LIBGL_ES             : '3',
             POJAV_RENDERER       : 'opengles3',
             MOBILEGL_BACKEND_TYPE: backendType,
-    ].collect { key, value -> "${key}=${value}" }.join(':')
+    ] + extraEnv
+    ).collect { key, value -> "${key}=${value}" }.join(':')
+}
+def mobileGlRendererString = { label, libraryName ->
+    "${label}:${libraryName}:/${libraryName}"
 }
 def signingStoreFile = file('../keystore.jks')
 def signingStorePassword = System.getenv('SIGNING_STORE_PASSWORD')
@@ -84,7 +89,20 @@ android {
             manifestPlaceholders = [
                     appLabel: 'MobileGL Magma',
                     des     : 'MobileGL Magma',
-                    renderer: 'MobileGL Magma:libMobileGL.so:/libMobileGL.so',
+                    renderer: mobileGlRendererString('MobileGL Magma', 'libMobileGL.so'),
+                    boatEnv : env,
+                    pojavEnv: env,
+            ]
+        }
+        compat {
+            dimension 'backend'
+            applicationId 'top.mobilegl.plugin.compat'
+            def env = mobileGlEnvString('DirectVulkan', [SFPEW_EGL: 'libMobileGL.so'])
+            resValue 'string', 'mobilegl_default_backend', 'DirectVulkan'
+            manifestPlaceholders = [
+                    appLabel: 'MobileGL Compat',
+                    des     : 'MobileGL Compat',
+                    renderer: mobileGlRendererString('MobileGL Compat', 'libSimpleFPEWrapper.so'),
                     boatEnv : env,
                     pojavEnv: env,
             ]

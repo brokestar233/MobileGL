@@ -31,3 +31,6 @@
 [submodule "3rdparty/apitrace"]
 	path = 3rdparty/apitrace
 	url = https://github.com/MobileGL-Dev/apitrace.git
+[submodule "3rdparty/SimpleFPEWrapper"]
+	path = 3rdparty/SimpleFPEWrapper
+	url = git@github.com:brokestar233/SimpleFPEWrapper.git

@@ -7,6 +7,7 @@ option(MOBILEGL_BUILD_BENCHMARK   "Build MobileGL benchmarks"                   
 option(MOBILEGL_FORCE_RELEASE_OPT "Enable Release optimization flags in Debug build" ON )
 option(MOBILEGL_ENABLE_TRACY      "Enable tracy for profiling"                       OFF)
 option(MOBILEGL_BUILD_TRACE_REPLAY "Build desktop apitrace replay runner"            OFF)
+option(MOBILEGL_BUILD_SIMPLE_FPE_WRAPPER "Build the bundled SimpleFPEWrapper compatibility layer" ON)
 option(MOBILEGL_IOS               "Build MobileGL for iOS instead of macOS when APPLE is set" OFF)
 set(MOBILEGL_LOG_ACTIVE_LEVEL "MOBILEGL_LOG_LEVEL_INFO" CACHE STRING "MobileGL active log level macro")
 set(MOBILEGL_VULKAN_LIBRARY "" CACHE FILEPATH "Vulkan loader/MoltenVK library to link for iOS builds")
@@ -345,6 +346,74 @@ target_compile_definitions(${CMAKE_PROJECT_NAME}
         ${MOBILEGL_COMPILE_DEF}
         MOBILEGL_LOG_ACTIVE_LEVEL=${MOBILEGL_LOG_ACTIVE_LEVEL}
 )
+
+if (MOBILEGL_BUILD_SIMPLE_FPE_WRAPPER)
+    set(MOBILEGL_SIMPLE_FPE_WRAPPER_ROOT "${CMAKE_SOURCE_DIR}/3rdparty/SimpleFPEWrapper")
+    set(MOBILEGL_SIMPLE_FPE_WRAPPER_GLM_DIR "${MOBILEGL_SIMPLE_FPE_WRAPPER_ROOT}/3rdparty/glm")
+    set(MOBILEGL_SIMPLE_FPE_WRAPPER_XXHASH_DIR "${MOBILEGL_SIMPLE_FPE_WRAPPER_ROOT}/3rdparty/xxhash")
+
+    if (EXISTS "${MOBILEGL_SIMPLE_FPE_WRAPPER_ROOT}/SimpleFPEWrapper/init.cpp"
+            AND EXISTS "${MOBILEGL_SIMPLE_FPE_WRAPPER_GLM_DIR}/glm/glm.hpp"
+            AND EXISTS "${MOBILEGL_SIMPLE_FPE_WRAPPER_XXHASH_DIR}/xxhash64.h")
+        set(MOBILEGL_SIMPLE_FPE_WRAPPER_SOURCE_FILES
+                ${MOBILEGL_SIMPLE_FPE_WRAPPER_ROOT}/SimpleFPEWrapper/init.cpp
+                ${MOBILEGL_SIMPLE_FPE_WRAPPER_ROOT}/SimpleFPEWrapper/drawing.cpp
+                ${MOBILEGL_SIMPLE_FPE_WRAPPER_ROOT}/SimpleFPEWrapper/getter.cpp
+                ${MOBILEGL_SIMPLE_FPE_WRAPPER_ROOT}/SimpleFPEWrapper/lookup.cpp
+                ${MOBILEGL_SIMPLE_FPE_WRAPPER_ROOT}/SimpleFPEWrapper/backend/loader.cpp
+                ${MOBILEGL_SIMPLE_FPE_WRAPPER_ROOT}/SimpleFPEWrapper/fpe/fpe.cpp
+                ${MOBILEGL_SIMPLE_FPE_WRAPPER_ROOT}/SimpleFPEWrapper/fpe/fpe_shadergen.cpp
+                ${MOBILEGL_SIMPLE_FPE_WRAPPER_ROOT}/SimpleFPEWrapper/fpe/state.cpp
+                ${MOBILEGL_SIMPLE_FPE_WRAPPER_ROOT}/SimpleFPEWrapper/fpe/transformation.cpp
+                ${MOBILEGL_SIMPLE_FPE_WRAPPER_ROOT}/SimpleFPEWrapper/fpe/vertexpointer.cpp
+                ${MOBILEGL_SIMPLE_FPE_WRAPPER_ROOT}/SimpleFPEWrapper/fpe/list.cpp
+                ${MOBILEGL_SIMPLE_FPE_WRAPPER_ROOT}/SimpleFPEWrapper/fpe/pointer_utils.cpp
+                ${MOBILEGL_SIMPLE_FPE_WRAPPER_ROOT}/SimpleFPEWrapper/fpe/drawing1x.cpp
+                ${MOBILEGL_SIMPLE_FPE_WRAPPER_ROOT}/SimpleFPEWrapper/fpe/vertexpointer_utils.cpp
+                ${MOBILEGL_SIMPLE_FPE_WRAPPER_ROOT}/SimpleFPEWrapper/fpe/drawstate1x.cpp
+                ${MOBILEGL_SIMPLE_FPE_WRAPPER_ROOT}/SimpleFPEWrapper/fpe/glstate.cpp
+                ${MOBILEGL_SIMPLE_FPE_WRAPPER_ROOT}/SimpleFPEWrapper/fpe/vertexpointerarray.cpp
+        )
+
+        add_library(SimpleFPEWrapper SHARED
+                ${MOBILEGL_SIMPLE_FPE_WRAPPER_SOURCE_FILES}
+        )
+
+        target_compile_features(SimpleFPEWrapper PRIVATE cxx_std_20)
+        target_include_directories(SimpleFPEWrapper PRIVATE
+                ${MOBILEGL_SIMPLE_FPE_WRAPPER_ROOT}/include
+                ${MOBILEGL_SIMPLE_FPE_WRAPPER_ROOT}/SimpleFPEWrapper
+                ${MOBILEGL_SIMPLE_FPE_WRAPPER_GLM_DIR}
+                ${MOBILEGL_SIMPLE_FPE_WRAPPER_XXHASH_DIR}
+        )
+
+        if (CMAKE_BUILD_TYPE STREQUAL "Debug")
+            set_target_properties(SimpleFPEWrapper PROPERTIES
+                    C_VISIBILITY_PRESET default
+                    CXX_VISIBILITY_PRESET default
+                    VISIBILITY_INLINES_HIDDEN OFF
+            )
+        else()
+            set_target_properties(SimpleFPEWrapper PROPERTIES
+                    C_VISIBILITY_PRESET hidden
+                    CXX_VISIBILITY_PRESET hidden
+                    VISIBILITY_INLINES_HIDDEN ON
+            )
+        endif()
+
+        if (ANDROID)
+            target_link_libraries(SimpleFPEWrapper PRIVATE
+                    android
+                    dl
+                    log
+            )
+        elseif (UNIX AND NOT APPLE)
+            target_link_libraries(SimpleFPEWrapper PRIVATE dl)
+        endif()
+    else()
+        message(STATUS "SimpleFPEWrapper sources or nested submodules are missing; skipping compatibility wrapper target")
+    endif()
+endif()
 
 if(UNIX AND NOT APPLE AND NOT ANDROID)
     foreach(MOBILEGL_LOADER_ALIAS
