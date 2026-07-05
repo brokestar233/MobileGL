@@ -85,6 +85,8 @@ namespace MobileGL {
                 Bool ValidateTextureObject(Uint index) const;
                 Int GetActiveTextureUnit() const;
                 void SetActiveTextureUnit(Int unit);
+                void MarkTextureUnitUsageDirty();
+                Int GetUsedTextureUnitCount();
 
                 // Program
                 Uint CreateProgram();

@@ -204,6 +204,7 @@ namespace MobileGL::MG_Impl::GLImpl {
         auto& textureUnit = MG_State::pGLContext->GetTextureUnitObject((Int)unit);
         if (sampler == 0) {
             textureUnit.SetSamplerObject(nullptr);
+            MG_State::pGLContext->MarkTextureUnitUsageDirty();
         } else {
             if (!SamplerImpl::ValidateSamplerName(sampler)) return;
             Bool doesSamplerObjectCreated = MG_State::pGLContext->ValidateSamplerObject(sampler);
@@ -213,6 +214,7 @@ namespace MobileGL::MG_Impl::GLImpl {
             auto& samplerObject = MG_State::pGLContext->GetSamplerObject(sampler);
 
             textureUnit.SetSamplerObject(MG_State::pGLContext->GetSamplerObject(sampler));
+            MG_State::pGLContext->MarkTextureUnitUsageDirty();
         }
     }
 

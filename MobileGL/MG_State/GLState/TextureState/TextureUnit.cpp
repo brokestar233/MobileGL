@@ -30,4 +30,17 @@ namespace MobileGL::MG_State::GLState {
     const SharedPtr<SamplerObject>& TextureUnit::GetSamplerObject() const {
         return m_sampler;
     }
+
+    Bool TextureUnit::HasAnyBinding() const {
+        if (m_sampler) {
+            return true;
+        }
+
+        for (const auto& slot : m_slots) {
+            if (slot.GetBoundObject()) {
+                return true;
+            }
+        }
+        return false;
+    }
 } // namespace MobileGL::MG_State::GLState

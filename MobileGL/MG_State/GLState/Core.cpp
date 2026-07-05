@@ -231,6 +231,14 @@ namespace MobileGL::MG_State {
             m_textureState.SetActiveTextureUnit(unit);
         }
 
+        void GLContext::MarkTextureUnitUsageDirty() {
+            m_textureState.MarkTextureUnitUsageDirty();
+        }
+
+        Int GLContext::GetUsedTextureUnitCount() {
+            return m_textureState.GetUsedTextureUnitCount();
+        }
+
         // Program
         Uint GLContext::CreateProgram() {
             return m_programState.CreateProgram();
@@ -580,11 +588,16 @@ namespace MobileGL::MG_State {
             // Unbind the sampler from all texture units
             if (ValidateSamplerObject(index)) {
                 auto sampler = m_samplerState.GetSamplerObject(index);
+                Bool touchedTextureUnits = false;
                 for (Int unit = 0; unit < TextureState::MAX_TEXTURE_IMAGE_UNITS; ++unit) {
                     auto& textureUnit = m_textureState.GetUnitObject(unit);
                     if (textureUnit.GetSamplerObject() == sampler) {
                         textureUnit.SetSamplerObject(nullptr);
+                        touchedTextureUnits = true;
                     }
+                }
+                if (touchedTextureUnits) {
+                    m_textureState.MarkTextureUnitUsageDirty();
                 }
             }
             m_samplerState.MarkSamplerObjectForDeletion(index);

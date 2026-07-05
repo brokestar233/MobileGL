@@ -2527,6 +2527,7 @@ namespace MobileGL::MG_Impl::GLImpl {
             auto& currentUnit = MG_State::pGLContext->GetTextureUnitObject(activeUnit);
             auto& bindingSlot = currentUnit.GetBindingSlot(textureTarget);
             bindingSlot.Bind(nullptr);
+            MG_State::pGLContext->MarkTextureUnitUsageDirty();
             return;
         }
 
@@ -2573,6 +2574,7 @@ namespace MobileGL::MG_Impl::GLImpl {
         auto& currentUnit = MG_State::pGLContext->GetTextureUnitObject(MG_State::pGLContext->GetActiveTextureUnit());
         auto& bindingSlot = currentUnit.GetBindingSlot(textureTarget);
         bindingSlot.Bind(textureObject);
+        MG_State::pGLContext->MarkTextureUnitUsageDirty();
     }
 
     void ActiveTexture_State(GLenum texture) {
@@ -3161,6 +3163,7 @@ namespace MobileGL::MG_Impl::GLImpl {
             for (auto& slot : textureUnit.GetAllBindingSlots()) {
                 slot.Bind(nullptr);
             }
+            MG_State::pGLContext->MarkTextureUnitUsageDirty();
             return;
         }
 
@@ -3172,6 +3175,7 @@ namespace MobileGL::MG_Impl::GLImpl {
             return;
         }
         textureUnit.GetBindingSlot(textureObject->GetTarget()).Bind(textureObject);
+        MG_State::pGLContext->MarkTextureUnitUsageDirty();
     }
 
     void GetTextureImage(GLuint texture, GLint level, GLenum format, GLenum type, GLsizei bufSize, void* pixels) {

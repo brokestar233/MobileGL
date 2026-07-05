@@ -19,6 +19,7 @@ namespace MobileGL::MG_State::GLState {
         const SharedPtr<SamplerObject>& GetSamplerObject() const;
         Array<BindingSlot<ITextureObject>, (int)TextureTarget::TextureTargetCount>& GetAllBindingSlots();
         void SetSamplerObject(const SharedPtr<SamplerObject>& sampler);
+        Bool HasAnyBinding() const;
 
     private:
         Array<BindingSlot<ITextureObject>, (int)TextureTarget::TextureTargetCount> m_slots;

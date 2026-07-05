@@ -89,11 +89,13 @@ namespace MobileGL::MG_State::GLState {
         if (m_indexGenerator.IsValid(index)) {
             auto it = m_textureObjects.find(index);
             if (it != m_textureObjects.end()) {
+                Bool touchedTextureUnits = false;
                 for (auto& unit : m_textureUnits) {
                     auto& bindingSlots = unit.GetAllBindingSlots();
                     for (auto& bindingSlot : bindingSlots) {
                         if (bindingSlot.GetBoundObject() == it->second) {
                             bindingSlot.Bind(nullptr);
+                            touchedTextureUnits = true;
                         }
                     }
                 }
@@ -101,6 +103,9 @@ namespace MobileGL::MG_State::GLState {
                     if (imageBinding.Texture == it->second) {
                         imageBinding.Bind(nullptr, 0, GL_FALSE, 0, GL_READ_ONLY, GL_R8);
                     }
+                }
+                if (touchedTextureUnits) {
+                    MarkTextureUnitUsageDirty();
                 }
                 m_textureObjects.erase(it);
             }
@@ -142,6 +147,28 @@ namespace MobileGL::MG_State::GLState {
 
     void TextureState::SetActiveTextureUnit(Int unit) {
         m_activeTextureUnit = unit;
+    }
+
+    void TextureState::MarkTextureUnitUsageDirty() {
+        m_usedTextureUnitCountDirty = true;
+    }
+
+    Int TextureState::GetUsedTextureUnitCount() {
+        if (!m_usedTextureUnitCountDirty) {
+            return m_cachedUsedTextureUnitCount;
+        }
+
+        Int count = 0;
+        for (Int unit = MAX_TEXTURE_IMAGE_UNITS - 1; unit >= 0; --unit) {
+            if (m_textureUnits[unit].HasAnyBinding()) {
+                count = unit + 1;
+                break;
+            }
+        }
+
+        m_cachedUsedTextureUnitCount = count;
+        m_usedTextureUnitCountDirty = false;
+        return m_cachedUsedTextureUnitCount;
     }
 
     Bool TextureState::ValidateName(Uint index) const {

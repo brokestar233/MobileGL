@@ -48,6 +48,8 @@ namespace MobileGL::MG_State::GLState {
         const ImageTextureBinding& GetImageTextureBinding(Int unit) const;
         Int GetActiveTextureUnit() const;
         void SetActiveTextureUnit(Int unit);
+        void MarkTextureUnitUsageDirty();
+        Int GetUsedTextureUnitCount();
         void MarkTextureObjectForDeletion(Uint index);
         Bool EnsureName(Uint index);
         Bool ValidateName(Uint index) const;
@@ -59,5 +61,7 @@ namespace MobileGL::MG_State::GLState {
         Array<ImageTextureBinding, MAX_TEXTURE_IMAGE_UNITS> m_imageTextureBindings;
         IndexGenerator<Uint> m_indexGenerator;
         UnorderedMap<GLuint, SharedPtr<ITextureObject>> m_textureObjects;
+        Int m_cachedUsedTextureUnitCount = 0;
+        Bool m_usedTextureUnitCountDirty = true;
     };
 } // namespace MobileGL::MG_State::GLState

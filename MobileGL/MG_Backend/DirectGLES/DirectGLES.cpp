@@ -361,7 +361,8 @@ namespace MobileGL::MG_Backend::DirectGLES {
             //   2. textures used in current FBO
             //   3. textures bound to image units (TODO)
 
-            for (int index = 0; index < MG_State::GLState::TextureState::MAX_TEXTURE_IMAGE_UNITS; ++index) {
+            const Int usedTextureUnitCount = MG_State::pGLContext->GetUsedTextureUnitCount();
+            for (Int index = 0; index < usedTextureUnitCount; ++index) {
                 auto& unit = MG_State::pGLContext->GetTextureUnitObject(index);
                 for (const auto& bindingSlot : unit.GetAllBindingSlots()) {
                     auto& textureObject = bindingSlot.GetBoundObject();
@@ -874,8 +875,8 @@ namespace MobileGL::MG_Backend::DirectGLES {
 #ifdef TRACY_ENABLE
             ZoneScopedNC("BindCurrentTextures", TRACY_ZONECOLOR_BACKEND);
 #endif
-            Int maxTextureUnits = MG_State::GLState::TextureState::MAX_TEXTURE_IMAGE_UNITS;
-            for (Int unit = 0; unit < maxTextureUnits; ++unit) {
+            const Int usedTextureUnitCount = MG_State::pGLContext->GetUsedTextureUnitCount();
+            for (Int unit = 0; unit < usedTextureUnitCount; ++unit) {
                 auto& textureUnit = MG_State::pGLContext->GetTextureUnitObject(unit);
 
                 for (const auto& bindingSlot : textureUnit.GetAllBindingSlots()) {
