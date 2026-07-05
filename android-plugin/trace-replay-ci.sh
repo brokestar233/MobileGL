@@ -227,7 +227,7 @@ run_retrace() {
   copy_fixture_to_app
   adb_device_path shell am force-stop "${package_name}"
   "${ADB}" logcat -c
-  set -- am start -W -a top.mobilegl.plugin.TRACE_REPLAY \
+  set -- am start -a top.mobilegl.plugin.TRACE_REPLAY \
     -n "${package_name}/top.mobilegl.plugin.trace.TraceReplayActivity" \
     --es trace_path "${app_dir}/input/trace.trace" \
     --es golden_path "${app_dir}/input/golden.png"
@@ -255,11 +255,14 @@ run_retrace() {
   adb_device_path shell "$@"
 
   app_exited=0
+  saw_app_process=0
   for _ in $(seq 1 "${timeout_seconds}"); do
     if adb_device_path shell run-as "${package_name}" ls "${app_dir}/output/result.json" >/dev/null 2>&1; then
       break
     fi
-    if ! adb_device_path shell pidof "${package_name}" >/dev/null 2>&1; then
+    if adb_device_path shell pidof "${package_name}" >/dev/null 2>&1; then
+      saw_app_process=1
+    elif [ "${saw_app_process}" -eq 1 ]; then
       app_exited=1
       break
     fi

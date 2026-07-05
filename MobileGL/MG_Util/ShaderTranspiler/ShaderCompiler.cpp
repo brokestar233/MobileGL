@@ -165,6 +165,7 @@ namespace MobileGL {
                 tshader->setNanMinMaxClamp(true);
                 tshader->setInvertY(true);
                 const bool usesEsProfile = ShaderSourceUsesEsProfile(sourceStr);
+                tshader->setPreamble("#undef VULKAN\n");
                 if (attrib.flags & ShaderCompileBits::CompileForOpenGL) {
                     tshader->setEnvInput(glslang::EShSourceGlsl, lang, glslang::EShClientOpenGL,
                                          usesEsProfile ? 310 : 460);

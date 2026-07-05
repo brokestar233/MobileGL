@@ -142,8 +142,8 @@ jobs:
       - name: Load trace cases
         id: trace-cases
         run: |
-          echo "android=$(python3 tools/trace_replay/trace_cases.py --format github-apk)" >> "$GITHUB_OUTPUT"
-          echo "names=$(python3 tools/trace_replay/trace_cases.py --format names)" >> "$GITHUB_OUTPUT"
+          echo "android=$(python3 tools/trace_replay/trace_cases.py --ci --format github-apk)" >> "$GITHUB_OUTPUT"
+          echo "names=$(python3 tools/trace_replay/trace_cases.py --ci --format names)" >> "$GITHUB_OUTPUT"
 
   trace-fixtures:
     name: trace fixture (${{ matrix.case }})
@@ -264,6 +264,7 @@ jobs:
       - name: Retrace and validate
         env:
           MOBILEGL_RETRACE_USE_ANGLE: ${{ matrix.backend.name == 'DirectGLES' && '1' || '0' }}
+          MOBILEGL_VULKAN_R11G11B10F_FALLBACK: ${{ matrix.backend.name == 'DirectVulkan' && '1' || '0' }}
         run: |
           apk_file="$(find android-retrace-apks -name '${{ matrix.backend.apk }}' -print -quit)"
           timeout "$(( ${{ matrix.case.timeout_seconds }} + 300 ))" sh android-plugin/trace-replay-ci.sh \
