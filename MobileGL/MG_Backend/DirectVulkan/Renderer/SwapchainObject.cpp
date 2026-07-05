@@ -286,6 +286,11 @@ namespace MobileGL::MG_Backend::DirectVulkan {
         depthTex->AllocateStorage(TextureUploadTarget::Texture2D, 0, {
             {extentWidth, extentHeight, 1},
             defaultAttachmentByteSize}); // TODO: 4 is format size
+        auto* stencilTex = static_cast<MG_State::GLState::TextureObject2D*>(defaultFBOInfo->stencilAttachment.get());
+        stencilTex->SetInternalFormat(depthFormat);
+        stencilTex->AllocateStorage(TextureUploadTarget::Texture2D, 0, {
+            {extentWidth, extentHeight, 1},
+            defaultAttachmentByteSize}); // TODO: 4 is format size
 
     }
 
