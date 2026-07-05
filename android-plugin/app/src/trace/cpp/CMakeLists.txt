@@ -2,6 +2,13 @@ cmake_minimum_required(VERSION 3.22.1)
 
 project(trace_replay_runner)
 
+option(MOBILEGL_BUILD_TRACE_REPLAY "Build Android trace replay runner" OFF)
+
+if(NOT MOBILEGL_BUILD_TRACE_REPLAY)
+    message(STATUS "Trace replay runner disabled for this variant")
+    return()
+endif()
+
 set(APITRACE_ROOT "${CMAKE_CURRENT_LIST_DIR}/../../../../../3rdparty/apitrace")
 set(APITRACE_BINARY_DIR "${CMAKE_CURRENT_BINARY_DIR}/apitrace")
 set(APITRACE_VERSION "mobilegl-trace")

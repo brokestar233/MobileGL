@@ -56,6 +56,7 @@ android {
         externalNativeBuild {
             cmake {
                 def compilerLauncher = mobileGlCmakeCompilerLauncher()
+                arguments "-DMOBILEGL_BUILD_TRACE_REPLAY=OFF"
                 if (!compilerLauncher.isEmpty()) {
                     arguments "-DCMAKE_C_COMPILER_LAUNCHER=${compilerLauncher}",
                             "-DCMAKE_CXX_COMPILER_LAUNCHER=${compilerLauncher}"
@@ -113,6 +114,11 @@ android {
             dimension 'profile'
             applicationIdSuffix '.trace'
             versionNameSuffix '-trace'
+            externalNativeBuild {
+                cmake {
+                    arguments "-DMOBILEGL_BUILD_TRACE_REPLAY=ON"
+                }
+            }
         }
     }
 
