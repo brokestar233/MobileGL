@@ -1126,8 +1126,8 @@ namespace MobileGL::MG_Impl::GLImpl {
         TextureParameterObject_State(textureObject, pname, param, __func__);
     }
 
-    // Quick and dirty TexParameter*v implementation to make NeoForge happy.
-    // TODO: implement the missing part
+    // Compatibility shim for vector texture params. Multi-component cases are handled explicitly here,
+    // while scalar pnames still forward to TexParameterf_State.
     void TexParameterfv_State(GLenum target, GLenum pname, const GLfloat* params) {
         switch (pname) {
         case GL_TEXTURE_BORDER_COLOR: {
