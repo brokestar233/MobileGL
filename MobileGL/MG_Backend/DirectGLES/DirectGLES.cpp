@@ -774,7 +774,7 @@ namespace MobileGL::MG_Backend::DirectGLES {
 
             auto& currentProgram = MG_State::pGLContext->GetCurrentProgram();
             if (!currentProgram || !currentProgram->GetLinkStatus()) {
-                g_GLESFuncs.glUseProgram(0);
+                PrgramImpl::BindBackendProgram(0);
                 return;
             }
             const auto& backendProgramIt = g_backendProgramObjects.find(currentProgram.get());
@@ -1041,7 +1041,7 @@ namespace MobileGL::MG_Backend::DirectGLES {
                     }
                 }
             } else {
-                g_GLESFuncs.glUseProgram(0);
+                PrgramImpl::BindBackendProgram(0);
                 MGLOG_E("No backend program found (maybe not synced) for current program, cannot use program.");
             }
         }
@@ -1069,7 +1069,7 @@ namespace MobileGL::MG_Backend::DirectGLES {
 
         const auto& currentProgram = MG_State::pGLContext->GetCurrentProgram();
         if (!currentProgram || !currentProgram->GetLinkStatus()) {
-            g_GLESFuncs.glUseProgram(0);
+            PrgramImpl::BindBackendProgram(0);
             return;
         }
 
@@ -1077,7 +1077,7 @@ namespace MobileGL::MG_Backend::DirectGLES {
         if (backendProgramIt != PrgramImpl::g_backendProgramObjects.end()) {
             backendProgramIt->second->Use();
         } else {
-            g_GLESFuncs.glUseProgram(0);
+            PrgramImpl::BindBackendProgram(0);
             MGLOG_E("No backend program found (maybe not synced) for current compute program.");
         }
     }
@@ -3591,6 +3591,7 @@ namespace MobileGL::MG_Backend::DirectGLES {
         FramebufferImpl::g_fboBindVersions.fill(0);
 
         PrgramImpl::g_backendProgramObjects = {};
+        PrgramImpl::InvalidateBoundBackendProgram();
         SamplerImpl::g_backendSamplerObjects = {};
         RenderbufferImpl::g_backendRenderbufferObjects = {};
 

@@ -287,6 +287,9 @@ namespace MobileGL::MG_Backend::DirectGLES {
     } // namespace FramebufferImpl
 
     namespace PrgramImpl {
+        void BindBackendProgram(Uint backendProgramId);
+        void InvalidateBoundBackendProgram();
+
         class BackendProgramObjectImpl {
         public:
             BackendProgramObjectImpl();

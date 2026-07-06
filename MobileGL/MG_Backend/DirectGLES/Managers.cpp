@@ -1825,7 +1825,22 @@ namespace MobileGL::MG_Backend::DirectGLES {
     namespace PrgramImpl {
         Uint32 g_snormFallbackClampOutputMask = 0;
         Uint32 g_unormFallbackClampOutputMask = 0;
+        static constexpr Uint kInvalidBackendProgramId = std::numeric_limits<Uint>::max();
+        Uint g_boundBackendProgramId = kInvalidBackendProgramId;
         StateBackendObjectRegistry<MG_State::GLState::ProgramObject, BackendProgramObjectImpl> g_backendProgramObjects;
+
+        void BindBackendProgram(Uint backendProgramId) {
+            if (g_boundBackendProgramId == backendProgramId) {
+                return;
+            }
+
+            g_GLESFuncs.glUseProgram(backendProgramId);
+            g_boundBackendProgramId = backendProgramId;
+        }
+
+        void InvalidateBoundBackendProgram() {
+            g_boundBackendProgramId = kInvalidBackendProgramId;
+        }
 
         BackendProgramObjectImpl::BackendProgramObjectImpl() {
 #ifdef TRACY_ENABLE
@@ -1862,6 +1877,9 @@ namespace MobileGL::MG_Backend::DirectGLES {
                 variant.BackendGlobalUBOId = 0;
             }
             if (variant.BackendProgramId != 0) {
+                if (g_boundBackendProgramId == variant.BackendProgramId) {
+                    InvalidateBoundBackendProgram();
+                }
                 g_GLESFuncs.glDeleteProgram(variant.BackendProgramId);
                 variant.BackendProgramId = 0;
             }
@@ -2104,7 +2122,7 @@ namespace MobileGL::MG_Backend::DirectGLES {
             const auto* activeVariant = GetActiveVariant();
             const Uint backendProgramId = activeVariant ? activeVariant->BackendProgramId : 0;
             MGLOG_D("Using program %u", backendProgramId);
-            g_GLESFuncs.glUseProgram(backendProgramId);
+            BindBackendProgram(backendProgramId);
         }
 
         void BackendProgramObjectImpl::SetBaseInstance(Uint32 baseInstance) const {
