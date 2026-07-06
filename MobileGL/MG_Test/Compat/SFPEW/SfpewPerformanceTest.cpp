@@ -217,6 +217,27 @@ namespace MobileGL::MG_Test::Compat::SFPEW {
             }
         }
 
+        void DrawImmediateMenuQuadsAbsolute(int quadCount, float baseX, float baseY, float quadSize) {
+            const int gridWidth = std::max(1, static_cast<int>(std::sqrt(static_cast<float>(quadCount))));
+            for (int quadIndex = 0; quadIndex < quadCount; ++quadIndex) {
+                const int gx = quadIndex % gridWidth;
+                const int gy = quadIndex / gridWidth;
+                const float x = baseX + gx * (quadSize + 2.0f);
+                const float y = baseY + gy * (quadSize + 2.0f);
+
+                glBegin(GL_QUADS);
+                glTexCoord2f(0.0f, 0.0f);
+                glVertex3f(x, y, 0.0f);
+                glTexCoord2f(0.0f, 1.0f);
+                glVertex3f(x, y + quadSize, 0.0f);
+                glTexCoord2f(1.0f, 1.0f);
+                glVertex3f(x + quadSize, y + quadSize, 0.0f);
+                glTexCoord2f(1.0f, 0.0f);
+                glVertex3f(x + quadSize, y, 0.0f);
+                glEnd();
+            }
+        }
+
         void IssueTrackClientArrayDraw(const TrackClientArrayBatch& batch) {
             glEnableClientState(GL_TEXTURE_COORD_ARRAY);
             glEnableClientState(GL_COLOR_ARRAY);
@@ -227,6 +248,25 @@ namespace MobileGL::MG_Test::Compat::SFPEW {
             glColorPointer(4, GL_UNSIGNED_BYTE, sizeof(TrackInterleavedVertex), &base[0].Color[0]);
             glVertexPointer(3, GL_FLOAT, sizeof(TrackInterleavedVertex), &base[0].Position[0]);
             glDrawArrays(GL_QUADS, 0, batch.VertexCount);
+
+            glDisableClientState(GL_VERTEX_ARRAY);
+            glDisableClientState(GL_TEXTURE_COORD_ARRAY);
+            glDisableClientState(GL_COLOR_ARRAY);
+        }
+
+        void DrawTrackClientArrayRepeatsPersistentState(const TrackClientArrayBatch& batch, int repeats) {
+            glEnableClientState(GL_TEXTURE_COORD_ARRAY);
+            glEnableClientState(GL_COLOR_ARRAY);
+            glEnableClientState(GL_VERTEX_ARRAY);
+
+            const auto* base = batch.Vertices.data();
+            glTexCoordPointer(2, GL_FLOAT, sizeof(TrackInterleavedVertex), &base[0].TexCoord[0]);
+            glColorPointer(4, GL_UNSIGNED_BYTE, sizeof(TrackInterleavedVertex), &base[0].Color[0]);
+            glVertexPointer(3, GL_FLOAT, sizeof(TrackInterleavedVertex), &base[0].Position[0]);
+
+            for (int i = 0; i < repeats; ++i) {
+                glDrawArrays(GL_QUADS, 0, batch.VertexCount);
+            }
 
             glDisableClientState(GL_VERTEX_ARRAY);
             glDisableClientState(GL_TEXTURE_COORD_ARRAY);
@@ -388,6 +428,25 @@ namespace MobileGL::MG_Test::Compat::SFPEW {
         glDeleteTextures(1, &texture);
     }
 
+    TEST_F(SFPEWPerfFixture, CMMImmediateMenuQuadsAbsoluteSmokeAndPerf) {
+        const GLuint texture = CreateAlphaCheckerTexture();
+        Setup2D(Harness.GetWidth(), Harness.GetHeight());
+
+        const auto frameFn = [&]() {
+            ASSERT_TRUE(Harness.Clear(0.06f, 0.08f, 0.10f, 1.0f, &Error)) << Error;
+            glBindTexture(GL_TEXTURE_2D, texture);
+            DrawImmediateMenuQuadsAbsolute(256, 16.0f, 16.0f, 20.0f);
+        };
+
+        frameFn();
+        Harness.Finish();
+        EXPECT_TRUE(PixelHasVisibleColor(Harness.ReadPixel(24, 24)));
+        const auto result = MeasureScenario(Harness, "CMMImmediateMenuQuadsAbsolute", 256, frameFn);
+        EXPECT_GT(result.FrameNanoseconds, 0.0);
+
+        glDeleteTextures(1, &texture);
+    }
+
     TEST_F(SFPEWPerfFixture, CMMPanoramaClientArrayQuadsSmokeAndPerf) {
         const GLuint texture = CreateAlphaCheckerTexture();
         const auto batch = BuildTrackClientArrayBatch(1, 1.0f, 1.0f, 0.0f);
@@ -434,6 +493,26 @@ namespace MobileGL::MG_Test::Compat::SFPEW {
         EXPECT_GT(result.FrameNanoseconds, 0.0);
 
         glDeleteLists(listId, 1);
+        glDeleteTextures(1, &texture);
+    }
+
+    TEST_F(SFPEWPerfFixture, VanillaClientArrayGuiQuads12PersistentStateSmokeAndPerf) {
+        const GLuint texture = CreateAlphaCheckerTexture();
+        const auto batch = BuildTrackClientArrayBatch(3, 20.0f, 20.0f, 2.0f);
+        Setup2D(Harness.GetWidth(), Harness.GetHeight());
+
+        const auto frameFn = [&]() {
+            ASSERT_TRUE(Harness.Clear(0.06f, 0.08f, 0.10f, 1.0f, &Error)) << Error;
+            glBindTexture(GL_TEXTURE_2D, texture);
+            DrawTrackClientArrayRepeatsPersistentState(batch, 64);
+        };
+
+        frameFn();
+        Harness.Finish();
+        EXPECT_TRUE(PixelHasVisibleColor(Harness.ReadPixel(16, 16)));
+        const auto result = MeasureScenario(Harness, "VanillaClientArrayGuiQuads12PersistentState", 64, frameFn, 4, 20);
+        EXPECT_GT(result.FrameNanoseconds, 0.0);
+
         glDeleteTextures(1, &texture);
     }
 
