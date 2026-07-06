@@ -16,6 +16,7 @@
 #include <cstddef>
 #include <cstdio>
 #include <cstring>
+#include <cstdlib>
 #include <string>
 #include <vector>
 
@@ -650,7 +651,24 @@ void main() {
 
         PathPerfResult MeasureScenario(const OffscreenHarness& harness, const char* label, int drawsPerFrame,
                                        const std::function<void()>& frameFn) {
-            const double frameNanoseconds = harness.MeasureFrameNanoseconds(frameFn, kWarmupFrames, kTimedFrames);
+            const auto readFrameOverride = [](const char* name, int fallback) -> int {
+                const char* value = std::getenv(name);
+                if (value == nullptr || value[0] == '\0') {
+                    return fallback;
+                }
+
+                char* end = nullptr;
+                const long parsed = std::strtol(value, &end, 10);
+                if (end == value || *end != '\0' || parsed < 0 || parsed > std::numeric_limits<int>::max()) {
+                    return fallback;
+                }
+
+                return static_cast<int>(parsed);
+            };
+
+            const int warmupFrames = readFrameOverride("MOBILEGL_PATH_WARMUP_FRAMES", kWarmupFrames);
+            const int timedFrames = readFrameOverride("MOBILEGL_PATH_TIMED_FRAMES", kTimedFrames);
+            const double frameNanoseconds = harness.MeasureFrameNanoseconds(frameFn, warmupFrames, timedFrames);
             const double drawNanoseconds = frameNanoseconds / static_cast<double>(std::max(1, drawsPerFrame));
             std::printf("MOBILEGL_PATH_PERF case=%s frame_ns=%.2f draw_ns=%.2f draws_per_frame=%d fps=%.2f\n",
                         label,
