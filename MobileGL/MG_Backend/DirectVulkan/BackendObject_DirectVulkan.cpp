@@ -356,7 +356,7 @@ namespace MobileGL::MG_Backend::DirectVulkan {
                                    V_OpenGL33, E_GL_ARB_draw_buffers_blend, E_GL_ARB_compute_shader,
                                    E_GL_ARB_shader_storage_buffer_object, E_GL_ARB_shader_image_load_store,
                                    E_GL_ARB_program_interface_query, E_GL_ARB_framebuffer_object,
-                                   E_GL_ARB_multi_draw_indirect, E_GL_ARB_indirect_parameters,
+                                   E_GL_ARB_draw_indirect, E_GL_ARB_multi_draw_indirect, E_GL_ARB_indirect_parameters,
                                    E_GL_EXT_framebuffer_object, E_GL_ARB_depth_texture, E_GL_ARB_buffer_storage,
                                    E_GL_ARB_texture_storage, E_GL_ARB_direct_state_access,
                                    E_GL_ARB_shader_draw_parameters, E_GL_ARB_gpu_shader_int64, E_GL_KHR_debug},
