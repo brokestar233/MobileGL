@@ -147,6 +147,36 @@ namespace MobileGL::MG_Impl::GLImpl {
             return true;
         }
 
+        Bool IsLargeStreamingRewriteCandidate(const SharedPtr<MG_State::GLState::BufferObject>& bufferObject,
+                                              GLsizeiptr size,
+                                              const void* data,
+                                              BufferUsage usage) {
+            if (!bufferObject || !data || size <= 0) {
+                return false;
+            }
+            if (bufferObject->IsMapped()) {
+                return false;
+            }
+            if (bufferObject->GetSize() != static_cast<SizeT>(size)) {
+                return false;
+            }
+
+            constexpr SizeT kRewriteThreshold = 1024;
+            if (static_cast<SizeT>(size) < kRewriteThreshold) {
+                return false;
+            }
+
+            switch (usage) {
+            case BufferUsage::StreamDraw:
+            case BufferUsage::StreamCopy:
+            case BufferUsage::DynamicDraw:
+            case BufferUsage::DynamicCopy:
+                return true;
+            default:
+                return false;
+            }
+        }
+
         void ClearNamedBufferRange_State(GLuint buffer, GLenum internalformat, GLintptr offset, GLsizeiptr size,
                                          GLenum format, GLenum type, const void* data, BufferOp op) {
             const SizeT patternSize = GetClearPatternSize(internalformat, format, type, op);
@@ -833,6 +863,12 @@ namespace MobileGL::MG_Impl::GLImpl {
             return;
         }
 
+        if (IsLargeStreamingRewriteCandidate(bufferObject, size, data, bufferUsage)) {
+            bufferObject->SetUsage(bufferUsage);
+            bufferObject->UploadData({(void*)data, (SizeT)size}, 0);
+            return;
+        }
+
         bufferObject->SetUsage(bufferUsage);
         bufferObject->Resize(size);
         if (data) {
@@ -924,6 +960,12 @@ namespace MobileGL::MG_Impl::GLImpl {
                 ErrorCode::InvalidOperation,
                 MakeUnique<GenericErrorInfo>("MG_Impl/GLImpl", "NamedBufferData_State",
                                              "Cannot call glNamedBufferData on immutable buffer storage."));
+            return;
+        }
+
+        if (IsLargeStreamingRewriteCandidate(bufferObject, size, data, bufferUsage)) {
+            bufferObject->SetUsage(bufferUsage);
+            bufferObject->UploadData({(void*)data, (SizeT)size}, 0);
             return;
         }
 
