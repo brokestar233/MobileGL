@@ -1160,6 +1160,14 @@ namespace MobileGL::MG_Backend::DirectGLES {
 #endif
         DrawSyncBit syncBit = DrawSyncBit::IndexBuffer;
         PrepareForDraw(syncBit);
+        const auto& currentVAO = MG_State::pGLContext->GetBoundVertexArray();
+        if (currentVAO) {
+            const auto& backendVAOIt = VertexArrayImpl::g_backendVertexArrayObjects.find(currentVAO.get());
+            if (backendVAOIt != VertexArrayImpl::g_backendVertexArrayObjects.end()) {
+                backendVAOIt->second->SyncClientSideAttributesForDrawElements(currentVAO, count, type, indices);
+                backendVAOIt->second->SyncCurrentVertexAttributes(currentVAO);
+            }
+        }
         g_GLESFuncs.glDrawElementsBaseVertex(mode, count, type, indices, basevertex);
     }
 
@@ -1183,6 +1191,19 @@ namespace MobileGL::MG_Backend::DirectGLES {
 #endif
         DrawSyncBit syncBit = DrawSyncBit::IndexBuffer;
         PrepareForDraw(syncBit);
+        const auto& currentVAO = MG_State::pGLContext->GetBoundVertexArray();
+        if (currentVAO) {
+            const auto& backendVAOIt = VertexArrayImpl::g_backendVertexArrayObjects.find(currentVAO.get());
+            if (backendVAOIt != VertexArrayImpl::g_backendVertexArrayObjects.end()) {
+                backendVAOIt->second->SyncCurrentVertexAttributes(currentVAO);
+
+                for (GLsizei i = 0; i < drawcount; ++i) {
+                    backendVAOIt->second->SyncClientSideAttributesForDrawElements(currentVAO, count[i], type, indices[i]);
+                    g_GLESFuncs.glDrawElementsBaseVertex(mode, count[i], type, indices[i], basevertex[i]);
+                }
+                return;
+            }
+        }
 
         for (GLsizei i = 0; i < drawcount; ++i) {
             g_GLESFuncs.glDrawElementsBaseVertex(mode, count[i], type, indices[i], basevertex[i]);

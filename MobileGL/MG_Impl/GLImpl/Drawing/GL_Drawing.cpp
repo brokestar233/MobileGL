@@ -11,6 +11,7 @@
 #include <MG_State/GLState/Core.h>
 #include <MG_State/EGLState/Core.h>
 #include <MG_Backend/BackendObjects.h>
+#include <unordered_map>
 #include <vector>
 
 namespace MobileGL::MG_Impl::GLImpl {
@@ -54,6 +55,17 @@ namespace MobileGL::MG_Impl::GLImpl {
             indices.push_back(base + 3);
             indices.push_back(base + 0);
         }
+    }
+
+    static const std::vector<GLuint>& GetCachedZeroBasedQuadDrawIndices(GLsizei count) {
+        static thread_local std::unordered_map<GLsizei, std::vector<GLuint>> s_quadIndexCache;
+
+        auto [cacheIt, inserted] = s_quadIndexCache.try_emplace(count);
+        if (inserted) {
+            BuildQuadDrawIndices(0, count, cacheIt->second);
+        }
+
+        return cacheIt->second;
     }
 
     static Bool ValidateCurrentProgramForCompute(const char* functionName) {
@@ -426,13 +438,13 @@ namespace MobileGL::MG_Impl::GLImpl {
         if (!ValidatePrimitiveModeForBackend(__func__, mode)) return;
 
         if (mode == GL_QUADS) {
-            std::vector<GLuint> indices;
-            BuildQuadDrawIndices(first, count, indices);
+            const auto& indices = GetCachedZeroBasedQuadDrawIndices(count);
             if (!indices.empty()) {
-                DrawElements_Backend(GL_TRIANGLES,
-                                     static_cast<GLsizei>(indices.size()),
-                                     GL_UNSIGNED_INT,
-                                     indices.data());
+                DrawElementsBaseVertex_Backend(GL_TRIANGLES,
+                                               static_cast<GLsizei>(indices.size()),
+                                               GL_UNSIGNED_INT,
+                                               indices.data(),
+                                               first);
             }
             return;
         }
@@ -458,20 +470,42 @@ namespace MobileGL::MG_Impl::GLImpl {
         if (!ValidateCurrentProgramForExecution(__func__)) return;
         if (!ValidatePrimitiveModeForBackend(__func__, mode)) return;
 
-        for (GLsizei i = 0; i < drawcount; ++i) {
-            if (count[i] <= 0) {
-                continue;
+        if (mode == GL_QUADS) {
+            std::vector<GLsizei> triangleCounts;
+            std::vector<const void*> triangleIndices;
+            std::vector<GLint> baseVertices;
+            triangleCounts.reserve(static_cast<size_t>(drawcount));
+            triangleIndices.reserve(static_cast<size_t>(drawcount));
+            baseVertices.reserve(static_cast<size_t>(drawcount));
+
+            for (GLsizei i = 0; i < drawcount; ++i) {
+                if (count[i] <= 0) {
+                    continue;
+                }
+
+                const auto& indices = GetCachedZeroBasedQuadDrawIndices(count[i]);
+                if (indices.empty()) {
+                    continue;
+                }
+
+                triangleCounts.push_back(static_cast<GLsizei>(indices.size()));
+                triangleIndices.push_back(indices.data());
+                baseVertices.push_back(first[i]);
             }
 
-            if (mode == GL_QUADS) {
-                std::vector<GLuint> indices;
-                BuildQuadDrawIndices(first[i], count[i], indices);
-                if (!indices.empty()) {
-                    DrawElements_Backend(GL_TRIANGLES,
-                                         static_cast<GLsizei>(indices.size()),
-                                         GL_UNSIGNED_INT,
-                                         indices.data());
-                }
+            if (!triangleCounts.empty()) {
+                MultiDrawElementsBaseVertex_Backend(GL_TRIANGLES,
+                                                    triangleCounts.data(),
+                                                    GL_UNSIGNED_INT,
+                                                    triangleIndices.data(),
+                                                    static_cast<GLsizei>(triangleCounts.size()),
+                                                    baseVertices.data());
+            }
+            return;
+        }
+
+        for (GLsizei i = 0; i < drawcount; ++i) {
+            if (count[i] <= 0) {
                 continue;
             }
 
