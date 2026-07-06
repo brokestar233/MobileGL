@@ -20,6 +20,7 @@
 #include <MG_Util/BackendLoaders/OpenGL/Loader.h>
 #include <MG_Util/Converters/GLToStr/GLEnumConverter.h>
 #include <MG_Util/Converters/MGToGL/TextureEnumConverter.h>
+#include <MG_Util/Converters/MGToGL/DataTypeConverter.h>
 #include <MG_Util/Converters/MGToGL/FramebufferEnumConverter.h>
 #include <MG_Util/Converters/MGToStr/TextureEnumConverter.h>
 #include <MG_Util/Converters/MGToGL/RenderStateEnumConverter.h>
@@ -1096,6 +1097,115 @@ namespace MobileGL::MG_Backend::DirectGLES {
         return backendProgramIt->second->UsesBaseInstanceUniform();
     }
 
+    namespace {
+        struct RebasedInstancedAttribute {
+            Uint Index = 0;
+            MG_State::GLState::VertexAttribute Attribute{};
+            BufferImpl::BackendBufferObject* BackendBuffer = nullptr;
+        };
+
+        SizeT GetVertexAttributeElementStride(const MG_State::GLState::VertexAttribute& attrib) {
+            SizeT stride = static_cast<SizeT>(std::max(attrib.Stride, 0));
+            if (stride != 0) {
+                return stride;
+            }
+
+            switch (attrib.Type) {
+            case DataType::Int8:
+            case DataType::Uint8:
+                return static_cast<SizeT>(attrib.Size);
+            case DataType::Int16:
+            case DataType::Uint16:
+            case DataType::Float16:
+                return static_cast<SizeT>(attrib.Size) * 2u;
+            case DataType::Int32:
+            case DataType::Uint32:
+            case DataType::Float32:
+            case DataType::Fixed32:
+                return static_cast<SizeT>(attrib.Size) * 4u;
+            case DataType::Float64:
+                return static_cast<SizeT>(attrib.Size) * 8u;
+            default:
+                return 0;
+            }
+        }
+
+        void RebindVertexAttribute(Uint attribIndex, const MG_State::GLState::VertexAttribute& attrib) {
+            if (!attrib.IsInteger) {
+                g_GLESFuncs.glVertexAttribPointer(
+                    attribIndex, attrib.Size, MG_Util::ConvertDataTypeToGLEnum(attrib.Type),
+                    attrib.Normalized ? GL_TRUE : GL_FALSE, attrib.Stride,
+                    reinterpret_cast<const void*>(attrib.Offset));
+            } else {
+                g_GLESFuncs.glVertexAttribIPointer(
+                    attribIndex, attrib.Size, MG_Util::ConvertDataTypeToGLEnum(attrib.Type), attrib.Stride,
+                    reinterpret_cast<const void*>(attrib.Offset));
+            }
+        }
+
+        Bool ApplyBaseInstanceToInstancedAttributes(Uint32 baseInstance, Vector<RebasedInstancedAttribute>& rebased) {
+            rebased.clear();
+            if (baseInstance == 0) {
+                return false;
+            }
+
+            const auto& vao = MG_State::pGLContext->GetBoundVertexArray();
+            if (!vao) {
+                return false;
+            }
+
+            const auto& attrs = vao->GetAllAttributes();
+            Bool applied = false;
+            for (Uint attribIndex = 0; attribIndex < attrs.size(); ++attribIndex) {
+                const auto& attrib = attrs[attribIndex];
+                if (!attrib.Enabled || attrib.Divisor == 0 || !attrib.Buffer) {
+                    continue;
+                }
+
+                const SizeT elementStride = GetVertexAttributeElementStride(attrib);
+                if (elementStride == 0) {
+                    continue;
+                }
+
+                if (attrib.Divisor != 1) {
+                    MGLOG_W("Base-instance fallback does not support divisor=%u on attrib=%u; leaving attribute unchanged",
+                            attrib.Divisor, attribIndex);
+                    continue;
+                }
+
+                auto backendBufferIt = BufferImpl::g_backendBufferObjects.find(attrib.Buffer.get());
+                if (backendBufferIt == BufferImpl::g_backendBufferObjects.end()) {
+                    MGLOG_W("No backend buffer found for instanced attrib=%u during base-instance fallback",
+                            attribIndex);
+                    continue;
+                }
+
+                auto adjustedAttrib = attrib;
+                adjustedAttrib.Offset += static_cast<SizeT>(baseInstance) * elementStride;
+                backendBufferIt->second->Bind(GL_ARRAY_BUFFER);
+                RebindVertexAttribute(attribIndex, adjustedAttrib);
+                rebased.push_back({
+                    .Index = attribIndex,
+                    .Attribute = attrib,
+                    .BackendBuffer = backendBufferIt->second.get(),
+                });
+                applied = true;
+            }
+
+            return applied;
+        }
+
+        void RestoreInstancedAttributesAfterBaseInstanceFallback(const Vector<RebasedInstancedAttribute>& rebased) {
+            for (const auto& attr : rebased) {
+                if (!attr.BackendBuffer) {
+                    continue;
+                }
+                attr.BackendBuffer->Bind(GL_ARRAY_BUFFER);
+                RebindVertexAttribute(attr.Index, attr.Attribute);
+            }
+        }
+    } // namespace
+
     void PrepareForCompute(Bool includeDispatchIndirectBuffer) {
 #ifdef TRACY_ENABLE
         ZoneScopedC(TRACY_ZONECOLOR_BACKEND);
@@ -1298,10 +1408,15 @@ namespace MobileGL::MG_Backend::DirectGLES {
             if (needsBaseInstanceEmulation) {
                 SetCurrentBaseInstance(cmd.baseInstance);
             }
+            Vector<RebasedInstancedAttribute> rebasedInstancedAttribs;
+            const Bool rebased = ApplyBaseInstanceToInstancedAttributes(cmd.baseInstance, rebasedInstancedAttribs);
             const auto indexByteOffset = static_cast<SizeT>(cmd.firstIndex) * indexSize;
             g_GLESFuncs.glDrawElementsInstancedBaseVertex(
                 mode, static_cast<GLsizei>(cmd.count), type, reinterpret_cast<const GLvoid*>(indexByteOffset),
                 static_cast<GLsizei>(cmd.instanceCount), cmd.baseVertex);
+            if (rebased) {
+                RestoreInstancedAttributesAfterBaseInstanceFallback(rebasedInstancedAttribs);
+            }
         }
         if (needsBaseInstanceEmulation) {
             SetCurrentBaseInstance(0);
@@ -1382,10 +1497,15 @@ namespace MobileGL::MG_Backend::DirectGLES {
             if (needsBaseInstanceEmulation) {
                 SetCurrentBaseInstance(cmd.baseInstance);
             }
+            Vector<RebasedInstancedAttribute> rebasedInstancedAttribs;
+            const Bool rebased = ApplyBaseInstanceToInstancedAttributes(cmd.baseInstance, rebasedInstancedAttribs);
             const auto indexByteOffset = static_cast<SizeT>(cmd.firstIndex) * indexSize;
             g_GLESFuncs.glDrawElementsInstancedBaseVertex(
                 mode, static_cast<GLsizei>(cmd.count), type, reinterpret_cast<const GLvoid*>(indexByteOffset),
                 static_cast<GLsizei>(cmd.instanceCount), cmd.baseVertex);
+            if (rebased) {
+                RestoreInstancedAttributesAfterBaseInstanceFallback(rebasedInstancedAttribs);
+            }
         }
         if (needsBaseInstanceEmulation) {
             SetCurrentBaseInstance(0);
@@ -1441,9 +1561,14 @@ namespace MobileGL::MG_Backend::DirectGLES {
                 if (needsBaseInstanceEmulation) {
                     SetCurrentBaseInstance(cmd.baseInstance);
                 }
+                Vector<RebasedInstancedAttribute> rebasedInstancedAttribs;
+                const Bool rebased = ApplyBaseInstanceToInstancedAttributes(cmd.baseInstance, rebasedInstancedAttribs);
                 g_GLESFuncs.glDrawElementsInstancedBaseVertex(
                     GL_TRIANGLES, static_cast<GLsizei>(indices.size()), GL_UNSIGNED_INT, indices.data(),
                     static_cast<GLsizei>(cmd.instanceCount), static_cast<GLint>(cmd.first));
+                if (rebased) {
+                    RestoreInstancedAttributesAfterBaseInstanceFallback(rebasedInstancedAttribs);
+                }
                 continue;
             }
 
@@ -1456,9 +1581,14 @@ namespace MobileGL::MG_Backend::DirectGLES {
             if (needsBaseInstanceEmulation) {
                 SetCurrentBaseInstance(cmd.baseInstance);
             }
+            Vector<RebasedInstancedAttribute> rebasedInstancedAttribs;
+            const Bool rebased = ApplyBaseInstanceToInstancedAttributes(cmd.baseInstance, rebasedInstancedAttribs);
             g_GLESFuncs.glDrawArraysInstanced(
                 mode, static_cast<GLint>(cmd.first), static_cast<GLsizei>(cmd.count),
                 static_cast<GLsizei>(cmd.instanceCount));
+            if (rebased) {
+                RestoreInstancedAttributesAfterBaseInstanceFallback(rebasedInstancedAttribs);
+            }
         }
         if (needsBaseInstanceEmulation) {
             SetCurrentBaseInstance(0);
@@ -1491,7 +1621,12 @@ namespace MobileGL::MG_Backend::DirectGLES {
         if (needsBaseInstanceEmulation) {
             SetCurrentBaseInstance(baseinstance);
         }
+        Vector<RebasedInstancedAttribute> rebasedInstancedAttribs;
+        const Bool rebased = ApplyBaseInstanceToInstancedAttributes(baseinstance, rebasedInstancedAttribs);
         g_GLESFuncs.glDrawElementsInstancedBaseVertex(mode, count, type, indices, instancecount, basevertex);
+        if (rebased) {
+            RestoreInstancedAttributesAfterBaseInstanceFallback(rebasedInstancedAttribs);
+        }
         if (needsBaseInstanceEmulation) {
             SetCurrentBaseInstance(0);
         }
@@ -1516,7 +1651,12 @@ namespace MobileGL::MG_Backend::DirectGLES {
         if (needsBaseInstanceEmulation) {
             SetCurrentBaseInstance(baseinstance);
         }
+        Vector<RebasedInstancedAttribute> rebasedInstancedAttribs;
+        const Bool rebased = ApplyBaseInstanceToInstancedAttributes(baseinstance, rebasedInstancedAttribs);
         g_GLESFuncs.glDrawElementsInstanced(mode, count, type, indices, instancecount);
+        if (rebased) {
+            RestoreInstancedAttributesAfterBaseInstanceFallback(rebasedInstancedAttribs);
+        }
         if (needsBaseInstanceEmulation) {
             SetCurrentBaseInstance(0);
         }
@@ -1561,10 +1701,15 @@ namespace MobileGL::MG_Backend::DirectGLES {
         if (needsBaseInstanceEmulation) {
             SetCurrentBaseInstance(cmd.baseInstance);
         }
+        Vector<RebasedInstancedAttribute> rebasedInstancedAttribs;
+        const Bool rebased = ApplyBaseInstanceToInstancedAttributes(cmd.baseInstance, rebasedInstancedAttribs);
         const auto indexByteOffset = static_cast<SizeT>(cmd.firstIndex) * indexSize;
         g_GLESFuncs.glDrawElementsInstancedBaseVertex(
             mode, static_cast<GLsizei>(cmd.count), type, reinterpret_cast<const GLvoid*>(indexByteOffset),
             static_cast<GLsizei>(cmd.instanceCount), cmd.baseVertex);
+        if (rebased) {
+            RestoreInstancedAttributesAfterBaseInstanceFallback(rebasedInstancedAttribs);
+        }
         if (needsBaseInstanceEmulation) {
             SetCurrentBaseInstance(0);
         }
@@ -1582,7 +1727,12 @@ namespace MobileGL::MG_Backend::DirectGLES {
         if (needsBaseInstanceEmulation) {
             SetCurrentBaseInstance(baseinstance);
         }
+        Vector<RebasedInstancedAttribute> rebasedInstancedAttribs;
+        const Bool rebased = ApplyBaseInstanceToInstancedAttributes(baseinstance, rebasedInstancedAttribs);
         g_GLESFuncs.glDrawArraysInstanced(mode, first, count, instancecount);
+        if (rebased) {
+            RestoreInstancedAttributesAfterBaseInstanceFallback(rebasedInstancedAttribs);
+        }
         if (needsBaseInstanceEmulation) {
             SetCurrentBaseInstance(0);
         }
@@ -1626,9 +1776,14 @@ namespace MobileGL::MG_Backend::DirectGLES {
             if (needsBaseInstanceEmulation) {
                 SetCurrentBaseInstance(cmd.baseInstance);
             }
+            Vector<RebasedInstancedAttribute> rebasedInstancedAttribs;
+            const Bool rebased = ApplyBaseInstanceToInstancedAttributes(cmd.baseInstance, rebasedInstancedAttribs);
             g_GLESFuncs.glDrawElementsInstancedBaseVertex(
                 GL_TRIANGLES, static_cast<GLsizei>(indices.size()), GL_UNSIGNED_INT, indices.data(),
                 static_cast<GLsizei>(cmd.instanceCount), static_cast<GLint>(cmd.first));
+            if (rebased) {
+                RestoreInstancedAttributesAfterBaseInstanceFallback(rebasedInstancedAttribs);
+            }
             if (needsBaseInstanceEmulation) {
                 SetCurrentBaseInstance(0);
             }
@@ -1644,9 +1799,14 @@ namespace MobileGL::MG_Backend::DirectGLES {
         if (needsBaseInstanceEmulation) {
             SetCurrentBaseInstance(cmd.baseInstance);
         }
+        Vector<RebasedInstancedAttribute> rebasedInstancedAttribs;
+        const Bool rebased = ApplyBaseInstanceToInstancedAttributes(cmd.baseInstance, rebasedInstancedAttribs);
         g_GLESFuncs.glDrawArraysInstanced(
             mode, static_cast<GLint>(cmd.first), static_cast<GLsizei>(cmd.count),
             static_cast<GLsizei>(cmd.instanceCount));
+        if (rebased) {
+            RestoreInstancedAttributesAfterBaseInstanceFallback(rebasedInstancedAttribs);
+        }
         if (needsBaseInstanceEmulation) {
             SetCurrentBaseInstance(0);
         }
