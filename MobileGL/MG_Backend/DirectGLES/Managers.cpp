@@ -413,6 +413,11 @@ namespace MobileGL::MG_Backend::DirectGLES {
                 return;
             }
 
+            const Uint32 currentStateVersion = stateVAOObject->GetStateVersion();
+            if (m_isInitialized && m_syncedStateVersion == currentStateVersion) {
+                return;
+            }
+
             MGLOG_D("Syncing VAO with backend ID %u to backend for state ID %u", m_backendVAOId,
                     stateVAOObject->GetExternalIndex());
 
@@ -481,6 +486,8 @@ namespace MobileGL::MG_Backend::DirectGLES {
             }
 
             m_syncedAttributeVersions = allAttributeVersions;
+            m_syncedStateVersion = currentStateVersion;
+            m_isInitialized = true;
         }
 
         void BackendVertexArrayObject::SyncClientSideAttributesForDrawArrays(

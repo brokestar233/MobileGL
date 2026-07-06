@@ -81,6 +81,15 @@ namespace MobileGL::MG_State::GLState {
         BumpAttributeBufferVersion(index);
     }
 
+    void VertexArrayObject::BindIndexBuffer(const SharedPtr<BufferObject>& buffer) {
+        if (m_indexBufferBindingSlot.GetBoundObject() == buffer) {
+            return;
+        }
+
+        m_indexBufferBindingSlot.Bind(buffer);
+        ++m_stateVersion;
+    }
+
     BindingSlot<BufferObject>& VertexArrayObject::GetIndexBufferBindingSlot() {
         return m_indexBufferBindingSlot;
     }
@@ -116,19 +125,26 @@ namespace MobileGL::MG_State::GLState {
         return m_attributes[index].Divisor;
     }
 
+    Uint32 VertexArrayObject::GetStateVersion() const {
+        return m_stateVersion;
+    }
+
     void VertexArrayObject::BumpAttributeFormatVersion(Uint index) {
         if (index >= MAX_VERTEX_ATTRIBS) return;
         ++m_attributeVersions[index].FormatVersion;
+        ++m_stateVersion;
     }
 
     void VertexArrayObject::BumpAttributeBufferVersion(Uint index) {
         if (index >= MAX_VERTEX_ATTRIBS) return;
         ++m_attributeVersions[index].BufferVersion;
+        ++m_stateVersion;
     }
 
     void VertexArrayObject::BumpAttributeSwitchVersion(Uint index) {
         if (index >= MAX_VERTEX_ATTRIBS) return;
         ++m_attributeVersions[index].SwitchVersion;
+        ++m_stateVersion;
     }
 
     const VertexAttributeVersion& VertexArrayObject::GetAttributeVersion(Uint index) const {

@@ -46,6 +46,7 @@ namespace MobileGL {
                                         Bool isInteger);
 
                 void BindAttributeBuffer(Uint index, const SharedPtr<BufferObject>& buffer);
+                void BindIndexBuffer(const SharedPtr<BufferObject>& buffer);
 
                 BindingSlot<BufferObject>& GetIndexBufferBindingSlot();
                 const BindingSlot<BufferObject>& GetIndexBufferBindingSlot() const;
@@ -57,6 +58,7 @@ namespace MobileGL {
 
                 void SetAttributeDivisor(Uint index, Uint divisor);
                 Uint GetAttributeDivisor(Uint index) const;
+                Uint32 GetStateVersion() const;
 
                 const VertexAttributeVersion& GetAttributeVersion(Uint index) const;
                 const Array<VertexAttributeVersion, MAX_VERTEX_ATTRIBS>& GetAllAttributeVersions() const;
@@ -70,6 +72,7 @@ namespace MobileGL {
                 Array<VertexAttribute, MAX_VERTEX_ATTRIBS> m_attributes;
                 Array<VertexAttributeVersion, MAX_VERTEX_ATTRIBS> m_attributeVersions;
                 BindingSlot<BufferObject> m_indexBufferBindingSlot;
+                Uint32 m_stateVersion = 0;
             };
         } // namespace GLState
     } // namespace MG_State

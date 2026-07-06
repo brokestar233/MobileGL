@@ -257,7 +257,7 @@ namespace MobileGL::MG_Impl::GLImpl {
         if (!vao) return;
         auto bufferObject = GetVertexArrayBufferObject_State(buffer, "VertexArrayElementBuffer_State");
         if (buffer != 0 && !bufferObject) return;
-        vao->GetIndexBufferBindingSlot().Bind(bufferObject);
+        vao->BindIndexBuffer(bufferObject);
     }
 
     void VertexArrayVertexBuffer_State(GLuint vaobj, GLuint bindingindex, GLuint buffer, GLintptr offset,
