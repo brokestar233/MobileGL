@@ -577,6 +577,13 @@ namespace MobileGL {
             GL_FUNC_TYPEDEF(GLboolean, glIsEnabledi, GLenum target, GLuint index)
             GL_FUNC_TYPEDEF(void, glDrawElementsBaseVertex, GLenum mode, GLsizei count, GLenum type,
                             const void* indices, GLint basevertex)
+            GL_FUNC_TYPEDEF(void, glDrawArraysInstancedBaseInstance, GLenum mode, GLint first, GLsizei count,
+                            GLsizei instancecount, GLuint baseinstance)
+            GL_FUNC_TYPEDEF(void, glDrawElementsInstancedBaseInstance, GLenum mode, GLsizei count, GLenum type,
+                            const void* indices, GLsizei instancecount, GLuint baseinstance)
+            GL_FUNC_TYPEDEF(void, glDrawElementsInstancedBaseVertexBaseInstance, GLenum mode, GLsizei count,
+                            GLenum type, const void* indices, GLsizei instancecount, GLint basevertex,
+                            GLuint baseinstance)
             GL_FUNC_TYPEDEF(void, glDrawRangeElementsBaseVertex, GLenum mode, GLuint start, GLuint end, GLsizei count,
                             GLenum type, const void* indices, GLint basevertex)
             GL_FUNC_TYPEDEF(void, glDrawElementsInstancedBaseVertex, GLenum mode, GLsizei count, GLenum type,
@@ -975,6 +982,9 @@ namespace MobileGL {
             GL_FUNC_DECL(glColorMaski)
             GL_FUNC_DECL(glIsEnabledi)
             GL_FUNC_DECL(glDrawElementsBaseVertex)
+            GL_FUNC_DECL(glDrawArraysInstancedBaseInstance)
+            GL_FUNC_DECL(glDrawElementsInstancedBaseInstance)
+            GL_FUNC_DECL(glDrawElementsInstancedBaseVertexBaseInstance)
             GL_FUNC_DECL(glDrawRangeElementsBaseVertex)
             GL_FUNC_DECL(glDrawElementsInstancedBaseVertex)
             GL_FUNC_DECL(glFramebufferTexture)

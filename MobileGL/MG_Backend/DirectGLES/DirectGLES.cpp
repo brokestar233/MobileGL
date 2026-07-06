@@ -80,6 +80,30 @@ namespace MobileGL::MG_Backend::DirectGLES {
         Uint32 baseInstance = 0;
     };
 
+    const std::vector<GLuint>& GetZeroBasedQuadIndices(GLsizei count) {
+        static thread_local std::unordered_map<GLsizei, std::vector<GLuint>> s_quadIndexCache;
+
+        auto [cacheIt, inserted] = s_quadIndexCache.try_emplace(count);
+        if (inserted) {
+            auto& indices = cacheIt->second;
+            if (count >= 4) {
+                const GLsizei quadCount = count / 4;
+                indices.reserve(static_cast<SizeT>(quadCount) * 6u);
+                for (GLsizei quadIndex = 0; quadIndex < quadCount; ++quadIndex) {
+                    const GLuint base = static_cast<GLuint>(quadIndex * 4);
+                    indices.push_back(base + 0u);
+                    indices.push_back(base + 1u);
+                    indices.push_back(base + 2u);
+                    indices.push_back(base + 2u);
+                    indices.push_back(base + 3u);
+                    indices.push_back(base + 0u);
+                }
+            }
+        }
+
+        return cacheIt->second;
+    }
+
     SamplerImpl::BackendSamplerObject* GetRawDepthFetchSampler() {
         if (!g_rawDepthFetchSamplerState) {
             g_rawDepthFetchSamplerState = MakeShared<MG_State::GLState::SamplerObject>(0);
@@ -1264,6 +1288,13 @@ namespace MobileGL::MG_Backend::DirectGLES {
             if (cmd.count == 0 || cmd.instanceCount == 0) {
                 continue;
             }
+            if (!needsBaseInstanceEmulation && g_GLESFuncs.glDrawElementsInstancedBaseVertexBaseInstance) {
+                const auto indexByteOffset = static_cast<SizeT>(cmd.firstIndex) * indexSize;
+                g_GLESFuncs.glDrawElementsInstancedBaseVertexBaseInstance(
+                    mode, static_cast<GLsizei>(cmd.count), type, reinterpret_cast<const GLvoid*>(indexByteOffset),
+                    static_cast<GLsizei>(cmd.instanceCount), cmd.baseVertex, cmd.baseInstance);
+                continue;
+            }
             if (needsBaseInstanceEmulation) {
                 SetCurrentBaseInstance(cmd.baseInstance);
             }
@@ -1341,6 +1372,13 @@ namespace MobileGL::MG_Backend::DirectGLES {
             if (cmd.count == 0 || cmd.instanceCount == 0) {
                 continue;
             }
+            if (!needsBaseInstanceEmulation && g_GLESFuncs.glDrawElementsInstancedBaseVertexBaseInstance) {
+                const auto indexByteOffset = static_cast<SizeT>(cmd.firstIndex) * indexSize;
+                g_GLESFuncs.glDrawElementsInstancedBaseVertexBaseInstance(
+                    mode, static_cast<GLsizei>(cmd.count), type, reinterpret_cast<const GLvoid*>(indexByteOffset),
+                    static_cast<GLsizei>(cmd.instanceCount), cmd.baseVertex, cmd.baseInstance);
+                continue;
+            }
             if (needsBaseInstanceEmulation) {
                 SetCurrentBaseInstance(cmd.baseInstance);
             }
@@ -1388,6 +1426,33 @@ namespace MobileGL::MG_Backend::DirectGLES {
             if (cmd.count == 0 || cmd.instanceCount == 0) {
                 continue;
             }
+            if (mode == GL_QUADS) {
+                const auto& indices = GetZeroBasedQuadIndices(static_cast<GLsizei>(cmd.count));
+                if (indices.empty()) {
+                    continue;
+                }
+
+                if (!needsBaseInstanceEmulation && g_GLESFuncs.glDrawElementsInstancedBaseVertexBaseInstance) {
+                    g_GLESFuncs.glDrawElementsInstancedBaseVertexBaseInstance(
+                        GL_TRIANGLES, static_cast<GLsizei>(indices.size()), GL_UNSIGNED_INT, indices.data(),
+                        static_cast<GLsizei>(cmd.instanceCount), static_cast<GLint>(cmd.first), cmd.baseInstance);
+                    continue;
+                }
+                if (needsBaseInstanceEmulation) {
+                    SetCurrentBaseInstance(cmd.baseInstance);
+                }
+                g_GLESFuncs.glDrawElementsInstancedBaseVertex(
+                    GL_TRIANGLES, static_cast<GLsizei>(indices.size()), GL_UNSIGNED_INT, indices.data(),
+                    static_cast<GLsizei>(cmd.instanceCount), static_cast<GLint>(cmd.first));
+                continue;
+            }
+
+            if (!needsBaseInstanceEmulation && g_GLESFuncs.glDrawArraysInstancedBaseInstance) {
+                g_GLESFuncs.glDrawArraysInstancedBaseInstance(
+                    mode, static_cast<GLint>(cmd.first), static_cast<GLsizei>(cmd.count),
+                    static_cast<GLsizei>(cmd.instanceCount), cmd.baseInstance);
+                continue;
+            }
             if (needsBaseInstanceEmulation) {
                 SetCurrentBaseInstance(cmd.baseInstance);
             }
@@ -1418,6 +1483,11 @@ namespace MobileGL::MG_Backend::DirectGLES {
         DrawSyncBit syncBit = DrawSyncBit::IndexBuffer | DrawSyncBit::Instancing;
         PrepareForDraw(syncBit);
         const Bool needsBaseInstanceEmulation = CurrentProgramUsesBaseInstanceEmulation();
+        if (!needsBaseInstanceEmulation && g_GLESFuncs.glDrawElementsInstancedBaseVertexBaseInstance) {
+            g_GLESFuncs.glDrawElementsInstancedBaseVertexBaseInstance(
+                mode, count, type, indices, instancecount, basevertex, baseinstance);
+            return;
+        }
         if (needsBaseInstanceEmulation) {
             SetCurrentBaseInstance(baseinstance);
         }
@@ -1439,6 +1509,10 @@ namespace MobileGL::MG_Backend::DirectGLES {
         DrawSyncBit syncBit = DrawSyncBit::IndexBuffer | DrawSyncBit::Instancing;
         PrepareForDraw(syncBit);
         const Bool needsBaseInstanceEmulation = CurrentProgramUsesBaseInstanceEmulation();
+        if (!needsBaseInstanceEmulation && g_GLESFuncs.glDrawElementsInstancedBaseInstance) {
+            g_GLESFuncs.glDrawElementsInstancedBaseInstance(mode, count, type, indices, instancecount, baseinstance);
+            return;
+        }
         if (needsBaseInstanceEmulation) {
             SetCurrentBaseInstance(baseinstance);
         }
@@ -1477,6 +1551,13 @@ namespace MobileGL::MG_Backend::DirectGLES {
             return;
         }
 
+        if (!needsBaseInstanceEmulation && g_GLESFuncs.glDrawElementsInstancedBaseVertexBaseInstance) {
+            const auto indexByteOffset = static_cast<SizeT>(cmd.firstIndex) * indexSize;
+            g_GLESFuncs.glDrawElementsInstancedBaseVertexBaseInstance(
+                mode, static_cast<GLsizei>(cmd.count), type, reinterpret_cast<const GLvoid*>(indexByteOffset),
+                static_cast<GLsizei>(cmd.instanceCount), cmd.baseVertex, cmd.baseInstance);
+            return;
+        }
         if (needsBaseInstanceEmulation) {
             SetCurrentBaseInstance(cmd.baseInstance);
         }
@@ -1494,6 +1575,10 @@ namespace MobileGL::MG_Backend::DirectGLES {
         DrawSyncBit syncBit = DrawSyncBit::Instancing;
         PrepareForDraw(syncBit);
         const Bool needsBaseInstanceEmulation = CurrentProgramUsesBaseInstanceEmulation();
+        if (!needsBaseInstanceEmulation && g_GLESFuncs.glDrawArraysInstancedBaseInstance) {
+            g_GLESFuncs.glDrawArraysInstancedBaseInstance(mode, first, count, instancecount, baseinstance);
+            return;
+        }
         if (needsBaseInstanceEmulation) {
             SetCurrentBaseInstance(baseinstance);
         }
@@ -1526,6 +1611,36 @@ namespace MobileGL::MG_Backend::DirectGLES {
             return;
         }
 
+        if (mode == GL_QUADS) {
+            const auto& indices = GetZeroBasedQuadIndices(static_cast<GLsizei>(cmd.count));
+            if (indices.empty()) {
+                return;
+            }
+
+            if (!needsBaseInstanceEmulation && g_GLESFuncs.glDrawElementsInstancedBaseVertexBaseInstance) {
+                g_GLESFuncs.glDrawElementsInstancedBaseVertexBaseInstance(
+                    GL_TRIANGLES, static_cast<GLsizei>(indices.size()), GL_UNSIGNED_INT, indices.data(),
+                    static_cast<GLsizei>(cmd.instanceCount), static_cast<GLint>(cmd.first), cmd.baseInstance);
+                return;
+            }
+            if (needsBaseInstanceEmulation) {
+                SetCurrentBaseInstance(cmd.baseInstance);
+            }
+            g_GLESFuncs.glDrawElementsInstancedBaseVertex(
+                GL_TRIANGLES, static_cast<GLsizei>(indices.size()), GL_UNSIGNED_INT, indices.data(),
+                static_cast<GLsizei>(cmd.instanceCount), static_cast<GLint>(cmd.first));
+            if (needsBaseInstanceEmulation) {
+                SetCurrentBaseInstance(0);
+            }
+            return;
+        }
+
+        if (!needsBaseInstanceEmulation && g_GLESFuncs.glDrawArraysInstancedBaseInstance) {
+            g_GLESFuncs.glDrawArraysInstancedBaseInstance(
+                mode, static_cast<GLint>(cmd.first), static_cast<GLsizei>(cmd.count),
+                static_cast<GLsizei>(cmd.instanceCount), cmd.baseInstance);
+            return;
+        }
         if (needsBaseInstanceEmulation) {
             SetCurrentBaseInstance(cmd.baseInstance);
         }
