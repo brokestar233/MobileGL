@@ -28,6 +28,8 @@ namespace MobileGL::MG_Test::RenderPath::MobileGLPath {
         constexpr int kTimedFrames = 30;
         constexpr int kDrawCount = 256;
         constexpr int kQuadsPerDraw = 3;
+        constexpr int kRegionCount = 192;
+        constexpr int kFacesPerRegion = 7;
 
         struct Vertex {
             GLfloat Position[3];
@@ -59,6 +61,18 @@ namespace MobileGL::MG_Test::RenderPath::MobileGLPath {
         struct ProgramBundle {
             GLuint Program = 0;
             GLint SamplerLocation = -1;
+        };
+
+        struct RegionBatchBuffers {
+            GLuint Vao = 0;
+            GLuint Vbo = 0;
+            std::array<GLint, kFacesPerRegion> Firsts = {};
+            std::array<GLsizei, kFacesPerRegion> Counts = {};
+            std::array<GLfloat, 4> ModelOffset = {0.0f, 0.0f, 0.0f, 0.0f};
+        };
+
+        struct RegionedMeshBuffers {
+            std::vector<RegionBatchBuffers> Regions;
         };
 
         GLuint CreateAlphaCheckerTexture() {
@@ -115,10 +129,11 @@ namespace MobileGL::MG_Test::RenderPath::MobileGLPath {
 layout(location = 0) in vec3 aPos;
 layout(location = 1) in vec4 aColor;
 layout(location = 2) in vec2 aTexCoord;
+layout(location = 3) in vec4 dModelOffset;
 out vec4 vColor;
 out vec2 vTexCoord;
 void main() {
-    gl_Position = vec4(aPos, 1.0);
+    gl_Position = vec4(aPos + dModelOffset.xyz, 1.0);
     vColor = aColor;
     vTexCoord = aTexCoord;
 }
@@ -249,6 +264,80 @@ void main() {
             return mesh;
         }
 
+        RegionedMeshBuffers CreateRegionedMeshBuffers(int regionCount, int facesPerRegion) {
+            RegionedMeshBuffers mesh{};
+            mesh.Regions.reserve(static_cast<size_t>(regionCount));
+
+            const int gridWidth = std::max(1, static_cast<int>(std::ceil(std::sqrt(static_cast<float>(regionCount)))));
+            const float regionStep = 0.14f;
+            const float localQuadWidth = 0.028f;
+            const float localQuadHeight = 0.028f;
+            const float localGap = 0.004f;
+
+            for (int regionIndex = 0; regionIndex < regionCount; ++regionIndex) {
+                RegionBatchBuffers region{};
+                std::vector<Vertex> vertices;
+                vertices.reserve(static_cast<size_t>(facesPerRegion) * 4u);
+
+                const int gx = regionIndex % gridWidth;
+                const int gy = regionIndex / gridWidth;
+                region.ModelOffset = {
+                    -0.92f + static_cast<float>(gx) * regionStep,
+                    -0.92f + static_cast<float>(gy) * regionStep,
+                    0.0f,
+                    0.0f,
+                };
+
+                for (int faceIndex = 0; faceIndex < facesPerRegion; ++faceIndex) {
+                    const int fx = faceIndex % 3;
+                    const int fy = faceIndex / 3;
+                    const float x = static_cast<float>(fx) * (localQuadWidth + localGap);
+                    const float y = static_cast<float>(fy) * (localQuadHeight + localGap);
+                    const GLubyte red = static_cast<GLubyte>(96 + ((regionIndex * 19 + faceIndex * 11) % 128));
+                    const GLubyte green = static_cast<GLubyte>(128 + ((regionIndex * 13 + faceIndex * 7) % 96));
+                    const GLubyte blue = static_cast<GLubyte>(160 + ((regionIndex * 17 + faceIndex * 5) % 80));
+
+                    region.Firsts[faceIndex] = static_cast<GLint>(vertices.size());
+                    region.Counts[faceIndex] = 4;
+
+                    const Vertex quad[4] = {
+                        {{x, y, 0.0f}, {red, green, blue, 255}, {0.0f, 0.0f}},
+                        {{x, y + localQuadHeight, 0.0f}, {red, green, blue, 255}, {0.0f, 1.0f}},
+                        {{x + localQuadWidth, y + localQuadHeight, 0.0f}, {red, green, blue, 255}, {1.0f, 1.0f}},
+                        {{x + localQuadWidth, y, 0.0f}, {red, green, blue, 255}, {1.0f, 0.0f}},
+                    };
+                    vertices.insert(vertices.end(), std::begin(quad), std::end(quad));
+                }
+
+                glGenVertexArrays(1, &region.Vao);
+                glBindVertexArray(region.Vao);
+
+                glGenBuffers(1, &region.Vbo);
+                glBindBuffer(GL_ARRAY_BUFFER, region.Vbo);
+                glBufferData(GL_ARRAY_BUFFER,
+                             static_cast<GLsizeiptr>(vertices.size() * sizeof(Vertex)),
+                             vertices.data(),
+                             GL_STATIC_DRAW);
+
+                glEnableVertexAttribArray(0);
+                glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex),
+                                      reinterpret_cast<const void*>(offsetof(Vertex, Position)));
+                glEnableVertexAttribArray(1);
+                glVertexAttribPointer(1, 4, GL_UNSIGNED_BYTE, GL_TRUE, sizeof(Vertex),
+                                      reinterpret_cast<const void*>(offsetof(Vertex, Color)));
+                glEnableVertexAttribArray(2);
+                glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex),
+                                      reinterpret_cast<const void*>(offsetof(Vertex, TexCoord)));
+
+                glBindVertexArray(0);
+                glBindBuffer(GL_ARRAY_BUFFER, 0);
+
+                mesh.Regions.push_back(region);
+            }
+
+            return mesh;
+        }
+
         void DestroyMeshBuffers(MeshBuffers* mesh) {
             if (mesh == nullptr) {
                 return;
@@ -266,6 +355,25 @@ void main() {
                 glDeleteVertexArrays(1, &mesh->Vao);
                 mesh->Vao = 0;
             }
+        }
+
+        void DestroyRegionedMeshBuffers(RegionedMeshBuffers* mesh) {
+            if (mesh == nullptr) {
+                return;
+            }
+
+            for (auto& region : mesh->Regions) {
+                if (region.Vbo != 0) {
+                    glDeleteBuffers(1, &region.Vbo);
+                    region.Vbo = 0;
+                }
+                if (region.Vao != 0) {
+                    glDeleteVertexArrays(1, &region.Vao);
+                    region.Vao = 0;
+                }
+            }
+
+            mesh->Regions.clear();
         }
 
         PathPerfResult MeasureScenario(const OffscreenHarness& harness, const char* label, int drawsPerFrame,
@@ -292,9 +400,11 @@ void main() {
             Program = CreateProgram();
             ASSERT_NE(Program.Program, 0u);
             Mesh = CreateMeshBuffers(kDrawCount, kQuadsPerDraw);
+            RegionedMesh = CreateRegionedMeshBuffers(kRegionCount, kFacesPerRegion);
         }
 
         static void TearDownTestSuite() {
+            DestroyRegionedMeshBuffers(&RegionedMesh);
             DestroyMeshBuffers(&Mesh);
             if (Program.Program != 0) {
                 glDeleteProgram(Program.Program);
@@ -320,6 +430,7 @@ void main() {
         static GLuint Texture;
         static ProgramBundle Program;
         static MeshBuffers Mesh;
+        static RegionedMeshBuffers RegionedMesh;
     };
 
     OffscreenHarness MobileGLPathPerfFixture::HarnessInstance;
@@ -327,6 +438,7 @@ void main() {
     GLuint MobileGLPathPerfFixture::Texture = 0;
     ProgramBundle MobileGLPathPerfFixture::Program;
     MeshBuffers MobileGLPathPerfFixture::Mesh;
+    RegionedMeshBuffers MobileGLPathPerfFixture::RegionedMesh;
 
     TEST_F(MobileGLPathPerfFixture, AngelicaWorldOneshotMultiDrawArraysSmokeAndPerf) {
         const auto frameFn = [&]() {
@@ -375,6 +487,43 @@ void main() {
         HarnessInstance.Finish();
         EXPECT_TRUE(PixelHasVisibleColor(HarnessInstance.ReadPixel(HarnessInstance.GetWidth() / 2, HarnessInstance.GetHeight() / 2)));
         const auto result = MeasureScenario(HarnessInstance, "AngelicaWorldMultiDrawIndirect", kDrawCount, frameFn);
+        EXPECT_GT(result.FrameNanoseconds, 0.0);
+    }
+
+    TEST_F(MobileGLPathPerfFixture, AngelicaWorldRegionedOneshotMultiDrawArraysSmokeAndPerf) {
+        const auto frameFn = [&]() {
+            ASSERT_TRUE(HarnessInstance.Clear(0.06f, 0.10f, 0.16f, 1.0f, &Error)) << Error;
+            glUseProgram(Program.Program);
+            if (Program.SamplerLocation >= 0) {
+                glUniform1i(Program.SamplerLocation, 0);
+            }
+            glActiveTexture(GL_TEXTURE0);
+            glBindTexture(GL_TEXTURE_2D, Texture);
+
+            for (const auto& region : RegionedMesh.Regions) {
+                glBindVertexArray(region.Vao);
+                glVertexAttrib4f(3,
+                                 region.ModelOffset[0],
+                                 region.ModelOffset[1],
+                                 region.ModelOffset[2],
+                                 region.ModelOffset[3]);
+                glMultiDrawArrays(GL_QUADS,
+                                  region.Firsts.data(),
+                                  region.Counts.data(),
+                                  static_cast<GLsizei>(region.Counts.size()));
+                glBindVertexArray(0);
+            }
+
+            glUseProgram(0);
+        };
+
+        frameFn();
+        HarnessInstance.Finish();
+        EXPECT_TRUE(PixelHasVisibleColor(HarnessInstance.ReadPixel(HarnessInstance.GetWidth() / 2, HarnessInstance.GetHeight() / 2)));
+        const auto result = MeasureScenario(HarnessInstance,
+                                            "AngelicaWorldRegionedOneshotMultiDrawArrays",
+                                            kRegionCount * kFacesPerRegion,
+                                            frameFn);
         EXPECT_GT(result.FrameNanoseconds, 0.0);
     }
 } // namespace MobileGL::MG_Test::RenderPath::MobileGLPath

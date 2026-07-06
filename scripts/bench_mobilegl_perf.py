@@ -56,6 +56,11 @@ DEFAULT_CASES: tuple[PerfCase, ...] = (
         "MobileGL/MG_Test/RenderPath/MobileGL/MobileGLPathPerfTest",
         "MobileGLPathPerfFixture.AngelicaWorldOneshotMultiDrawArraysSmokeAndPerf",
     ),
+    PerfCase(
+        "path",
+        "MobileGL/MG_Test/RenderPath/MobileGL/MobileGLPathPerfTest",
+        "MobileGLPathPerfFixture.AngelicaWorldRegionedOneshotMultiDrawArraysSmokeAndPerf",
+    ),
 )
 
 
