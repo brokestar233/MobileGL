@@ -126,8 +126,54 @@ namespace MobileGL::MG_Test::RenderPath::MobileGLPath {
             glClearColor(0.06f, 0.10f, 0.16f, 1.0f);
         }
 
-        bool PixelHasVisibleColor(const OffscreenHarness::Pixel& pixel) {
-            return pixel[0] > 8 || pixel[1] > 8 || pixel[2] > 8;
+        OffscreenHarness::Pixel MakeExpectedPixel(float red, float green, float blue, float alpha) {
+            auto toByte = [](float value) -> uint8_t {
+                const float clamped = std::clamp(value, 0.0f, 1.0f);
+                return static_cast<uint8_t>(std::lround(clamped * 255.0f));
+            };
+
+            return {toByte(red), toByte(green), toByte(blue), toByte(alpha)};
+        }
+
+        bool PixelDiffersFrom(const OffscreenHarness::Pixel& pixel,
+                              const OffscreenHarness::Pixel& expected,
+                              uint8_t threshold = 8) {
+            const auto absDiff = [](uint8_t a, uint8_t b) -> uint8_t {
+                return static_cast<uint8_t>(a > b ? (a - b) : (b - a));
+            };
+
+            return absDiff(pixel[0], expected[0]) > threshold ||
+                   absDiff(pixel[1], expected[1]) > threshold ||
+                   absDiff(pixel[2], expected[2]) > threshold ||
+                   absDiff(pixel[3], expected[3]) > threshold;
+        }
+
+        OffscreenHarness::Pixel ReadPixelAtNdc(const OffscreenHarness& harness, float ndcX, float ndcY);
+
+        bool AnyPixelDiffersFrom(const OffscreenHarness& harness,
+                                 std::initializer_list<std::array<float, 2>> ndcPoints,
+                                 const OffscreenHarness::Pixel& expected,
+                                 uint8_t threshold = 8) {
+            for (const auto& point : ndcPoints) {
+                if (PixelDiffersFrom(ReadPixelAtNdc(harness, point[0], point[1]), expected, threshold)) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        OffscreenHarness::Pixel ReadPixelAtNdc(const OffscreenHarness& harness, float ndcX, float ndcY) {
+            const auto clampCoord = [](GLint value, GLint limit) -> GLint {
+                return std::clamp(value, 0, std::max(0, limit - 1));
+            };
+
+            const float normX = std::clamp(ndcX * 0.5f + 0.5f, 0.0f, 1.0f);
+            const float normY = std::clamp(ndcY * 0.5f + 0.5f, 0.0f, 1.0f);
+            const GLint x = clampCoord(static_cast<GLint>(std::lround(normX * static_cast<float>(harness.GetWidth() - 1))),
+                                       harness.GetWidth());
+            const GLint y = clampCoord(static_cast<GLint>(std::lround(normY * static_cast<float>(harness.GetHeight() - 1))),
+                                       harness.GetHeight());
+            return harness.ReadPixel(x, y);
         }
 
         GLuint CompileShader(GLenum type, const char* source) {
@@ -689,7 +735,8 @@ void main() {
 
         frameFn();
         HarnessInstance.Finish();
-        EXPECT_TRUE(PixelHasVisibleColor(HarnessInstance.ReadPixel(HarnessInstance.GetWidth() / 2, HarnessInstance.GetHeight() / 2)));
+        EXPECT_TRUE(PixelDiffersFrom(ReadPixelAtNdc(HarnessInstance, -0.925f, -0.925f),
+                                     MakeExpectedPixel(0.06f, 0.10f, 0.16f, 1.0f)));
         const auto result = MeasureScenario(HarnessInstance, "AngelicaWorldOneshotMultiDrawArrays", kDrawCount, frameFn);
         EXPECT_GT(result.FrameNanoseconds, 0.0);
     }
@@ -717,7 +764,8 @@ void main() {
 
         frameFn();
         HarnessInstance.Finish();
-        EXPECT_TRUE(PixelHasVisibleColor(HarnessInstance.ReadPixel(HarnessInstance.GetWidth() / 2, HarnessInstance.GetHeight() / 2)));
+        EXPECT_TRUE(PixelDiffersFrom(ReadPixelAtNdc(HarnessInstance, -0.925f, -0.925f),
+                                     MakeExpectedPixel(0.06f, 0.10f, 0.16f, 1.0f)));
         const auto result = MeasureScenario(HarnessInstance, "AngelicaWorldMultiDrawIndirect", kDrawCount, frameFn);
         EXPECT_GT(result.FrameNanoseconds, 0.0);
     }
@@ -751,7 +799,8 @@ void main() {
 
         frameFn();
         HarnessInstance.Finish();
-        EXPECT_TRUE(PixelHasVisibleColor(HarnessInstance.ReadPixel(HarnessInstance.GetWidth() / 2, HarnessInstance.GetHeight() / 2)));
+        EXPECT_TRUE(PixelDiffersFrom(ReadPixelAtNdc(HarnessInstance, -0.906f, -0.906f),
+                                     MakeExpectedPixel(0.06f, 0.10f, 0.16f, 1.0f)));
         const auto result = MeasureScenario(HarnessInstance,
                                             "AngelicaWorldRegionedOneshotMultiDrawArrays",
                                             kRegionCount * kFacesPerRegion,
@@ -801,7 +850,15 @@ void main() {
 
         frameFn();
         HarnessInstance.Finish();
-        EXPECT_TRUE(PixelHasVisibleColor(HarnessInstance.ReadPixel(HarnessInstance.GetWidth() / 2, HarnessInstance.GetHeight() / 2)));
+        EXPECT_TRUE(AnyPixelDiffersFrom(
+            HarnessInstance,
+            {
+                {-0.937f, -0.937f},
+                {-0.797f, -0.937f},
+                {-0.657f, -0.937f},
+                {-0.937f, -0.797f},
+            },
+            MakeExpectedPixel(0.06f, 0.10f, 0.16f, 1.0f)));
         const auto result = MeasureScenario(HarnessInstance,
                                             "AngelicaWorldRegionedMultiDrawIndirect",
                                             kIndirectRegionCount * kChunksPerIndirectRegion * kFacesPerIndirectChunk,
@@ -828,9 +885,55 @@ void main() {
         glUseProgram(0);
         HarnessInstance.Finish();
 
-        EXPECT_TRUE(PixelHasVisibleColor(HarnessInstance.ReadPixel(HarnessInstance.GetWidth() / 4, HarnessInstance.GetHeight() / 2)));
-        EXPECT_TRUE(PixelHasVisibleColor(HarnessInstance.ReadPixel((HarnessInstance.GetWidth() * 3) / 4, HarnessInstance.GetHeight() / 2)));
+        const auto clearPixel = MakeExpectedPixel(0.06f, 0.10f, 0.16f, 1.0f);
+        EXPECT_TRUE(PixelDiffersFrom(ReadPixelAtNdc(HarnessInstance, -0.45f, 0.0f),
+                                     clearPixel));
+        EXPECT_TRUE(PixelDiffersFrom(ReadPixelAtNdc(HarnessInstance, 0.45f, 0.0f),
+                                     clearPixel));
 
+        DestroyInstancedQuadBuffers(&quad);
+    }
+
+    TEST_F(MobileGLPathPerfFixture, MultiDrawArraysIndirectUsesInstancedAttributeOffset) {
+        if (!SupportsMultiDrawIndirect()) {
+            GTEST_SKIP() << "glMultiDrawArraysIndirect is not available on this MobileGL path";
+        }
+
+        auto quad = CreateInstancedQuadBuffers();
+        const DrawArraysIndirectCommand commands[2] = {
+            {.Count = 4u, .InstanceCount = 1u, .First = 0u, .BaseInstance = 0u},
+            {.Count = 4u, .InstanceCount = 1u, .First = 0u, .BaseInstance = 1u},
+        };
+        GLuint indirectBuffer = 0;
+        glGenBuffers(1, &indirectBuffer);
+        glBindBuffer(GL_DRAW_INDIRECT_BUFFER, indirectBuffer);
+        glBufferData(GL_DRAW_INDIRECT_BUFFER, sizeof(commands), commands, GL_STREAM_DRAW);
+
+        ASSERT_TRUE(HarnessInstance.Clear(0.06f, 0.10f, 0.16f, 1.0f, &Error)) << Error;
+        glUseProgram(Program.Program);
+        if (Program.SamplerLocation >= 0) {
+            glUniform1i(Program.SamplerLocation, 0);
+        }
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, Texture);
+        glBindVertexArray(quad.Vao);
+
+        glMultiDrawArraysIndirect(GL_TRIANGLE_STRIP, reinterpret_cast<const void*>(0), 2, 0);
+
+        glBindVertexArray(0);
+        glBindBuffer(GL_DRAW_INDIRECT_BUFFER, 0);
+        glUseProgram(0);
+        HarnessInstance.Finish();
+
+        const auto clearPixel = MakeExpectedPixel(0.06f, 0.10f, 0.16f, 1.0f);
+        EXPECT_TRUE(PixelDiffersFrom(ReadPixelAtNdc(HarnessInstance, -0.45f, 0.0f),
+                                     clearPixel));
+        EXPECT_TRUE(PixelDiffersFrom(ReadPixelAtNdc(HarnessInstance, 0.45f, 0.0f),
+                                     clearPixel));
+
+        if (indirectBuffer != 0) {
+            glDeleteBuffers(1, &indirectBuffer);
+        }
         DestroyInstancedQuadBuffers(&quad);
     }
 } // namespace MobileGL::MG_Test::RenderPath::MobileGLPath
