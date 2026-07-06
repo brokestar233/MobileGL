@@ -288,7 +288,15 @@ namespace MobileGL::MG_Backend::DirectGLES {
                 }
             }
 
-            SyncBufferBindingPoints(BufferTarget::Uniform, GL_UNIFORM_BUFFER);
+            const auto& currentProgram = MG_State::pGLContext->GetCurrentProgram();
+            if (currentProgram &&
+                (currentProgram->GetUBOSize() > 0 || currentProgram->GetActiveUniformBlocksCount() > 0)) {
+            const auto& currentProgram = MG_State::pGLContext->GetCurrentProgram();
+            if (currentProgram &&
+                (currentProgram->GetUBOSize() > 0 || currentProgram->GetActiveUniformBlocksCount() > 0)) {
+                SyncBufferBindingPoints(BufferTarget::Uniform, GL_UNIFORM_BUFFER);
+            }
+        }
         }
 
         void SyncComputeBuffers(Bool includeDispatchIndirectBuffer) {
