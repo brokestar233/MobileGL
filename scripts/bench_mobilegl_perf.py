@@ -98,6 +98,15 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Print machine-readable JSON instead of the text table.",
     )
+    parser.add_argument(
+        "--gtest-repeat",
+        type=int,
+        default=0,
+        help=(
+            "Run each selected case once with --gtest_repeat=N and aggregate all PERF lines from that process. "
+            "Use 0 to keep the default isolated-process mode."
+        ),
+    )
     return parser.parse_args()
 
 
@@ -112,7 +121,24 @@ def select_cases(args: argparse.Namespace) -> list[PerfCase]:
     return cases
 
 
-def run_case(executable: pathlib.Path, gtest_filter: str, repeats: int) -> dict[str, object]:
+def summarize_runs(frame_times: list[float], draw_times: list[float]) -> dict[str, object]:
+    frame_mean = statistics.mean(frame_times)
+    draw_mean = statistics.mean(draw_times)
+    return {
+        "frame_ns": frame_times,
+        "draw_ns": draw_times,
+        "frame_avg_ns": frame_mean,
+        "frame_median_ns": statistics.median(frame_times),
+        "frame_stddev_ns": statistics.pstdev(frame_times) if len(frame_times) > 1 else 0.0,
+        "frame_min_ns": min(frame_times),
+        "frame_max_ns": max(frame_times),
+        "draw_avg_ns": draw_mean,
+        "draw_median_ns": statistics.median(draw_times),
+        "fps_avg": 1.0e9 / frame_mean if frame_mean > 0.0 else math.inf,
+    }
+
+
+def run_case_isolated(executable: pathlib.Path, gtest_filter: str, repeats: int) -> dict[str, object]:
     frame_times: list[float] = []
     draw_times: list[float] = []
 
@@ -137,20 +163,36 @@ def run_case(executable: pathlib.Path, gtest_filter: str, repeats: int) -> dict[
         frame_times.append(float(match.group(3)))
         draw_times.append(float(match.group(4)))
 
-    frame_mean = statistics.mean(frame_times)
-    draw_mean = statistics.mean(draw_times)
-    result = {
-        "frame_ns": frame_times,
-        "draw_ns": draw_times,
-        "frame_avg_ns": frame_mean,
-        "frame_median_ns": statistics.median(frame_times),
-        "frame_stddev_ns": statistics.pstdev(frame_times) if len(frame_times) > 1 else 0.0,
-        "frame_min_ns": min(frame_times),
-        "frame_max_ns": max(frame_times),
-        "draw_avg_ns": draw_mean,
-        "draw_median_ns": statistics.median(draw_times),
-        "fps_avg": 1.0e9 / frame_mean if frame_mean > 0.0 else math.inf,
-    }
+    return summarize_runs(frame_times, draw_times)
+
+
+def run_case_gtest_repeat(executable: pathlib.Path, gtest_filter: str, gtest_repeat: int) -> dict[str, object]:
+    if gtest_repeat <= 0:
+        raise ValueError("gtest_repeat must be positive")
+
+    proc = subprocess.run(
+        [str(executable), f"--gtest_filter={gtest_filter}", f"--gtest_repeat={gtest_repeat}"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if proc.returncode != 0:
+        sys.stderr.write(proc.stdout)
+        sys.stderr.write(proc.stderr)
+        raise RuntimeError(f"Case failed: {gtest_filter}")
+
+    matches = list(PERF_LINE_RE.finditer(proc.stdout))
+    if len(matches) != gtest_repeat:
+        sys.stderr.write(proc.stdout)
+        sys.stderr.write(proc.stderr)
+        raise RuntimeError(
+            f"Expected {gtest_repeat} PERF lines for case {gtest_filter}, got {len(matches)}"
+        )
+
+    frame_times = [float(match.group(3)) for match in matches]
+    draw_times = [float(match.group(4)) for match in matches]
+    result = summarize_runs(frame_times, draw_times)
+    result["mode"] = "gtest_repeat"
     return result
 
 
@@ -188,7 +230,14 @@ def main() -> int:
         if not executable.exists():
             print(f"Missing executable: {executable}", file=sys.stderr)
             return 1
-        results[case.gtest_filter] = run_case(executable, case.gtest_filter, args.repeats)
+        if args.gtest_repeat > 0:
+            results[case.gtest_filter] = run_case_gtest_repeat(
+                executable, case.gtest_filter, args.gtest_repeat
+            )
+        else:
+            results[case.gtest_filter] = run_case_isolated(
+                executable, case.gtest_filter, args.repeats
+            )
 
     if args.json:
         print(json.dumps(results, indent=2))
