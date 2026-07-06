@@ -3554,12 +3554,36 @@ namespace MobileGL::MG_Backend::DirectGLES {
         return true;
     }
 
+    void ResetBackendRuntimeState() {
+        BufferImpl::g_backendBufferObjects = {};
+        BufferImpl::g_boundVertexBufferObject = nullptr;
+
+        VertexArrayImpl::g_backendVertexArrayObjects = {};
+
+        TextureImpl::g_backendTextureObjects = {};
+        TextureImpl::g_activeTextureUnit = 0;
+        for (auto& unitCache : TextureImpl::g_boundTexturesCache) {
+            unitCache.fill(nullptr);
+        }
+
+        FramebufferImpl::g_backendFramebufferObjects = {};
+        FramebufferImpl::g_fboBindVersions.fill(0);
+
+        PrgramImpl::g_backendProgramObjects = {};
+        SamplerImpl::g_backendSamplerObjects = {};
+        RenderbufferImpl::g_backendRenderbufferObjects = {};
+
+        g_rawDepthFetchSamplerState.reset();
+        g_rawDepthFetchSamplerBackend.reset();
+    }
+
     void Present() {
             g_EGLFuncs.eglSwapBuffers(g_Display, g_Surface);
     }
 
     void DestroyEGLContext() {
         if (g_Display != EGL_NO_DISPLAY) {
+            ResetBackendRuntimeState();
             g_EGLFuncs.eglMakeCurrent(g_Display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
             if (g_Context != EGL_NO_CONTEXT) {
                 g_EGLFuncs.eglDestroyContext(g_Display, g_Context);

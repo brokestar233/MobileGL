@@ -99,6 +99,7 @@ namespace MobileGL::MG_Backend::DirectGLES {
     void SetEGLFuncsTable(const MG_External::EGLFunctionsTable& eglFuncs);
     void SetGLESFuncsTable(const MG_External::GLESFunctionsTable& glesFuncs);
     void SetGLESCapabilities(const MG_External::GLESCapabilities& capabilities);
+    void ResetBackendRuntimeState();
     void DestroyEGLContext();
 
     extern MG_External::EGLFunctionsTable g_EGLFuncs;
