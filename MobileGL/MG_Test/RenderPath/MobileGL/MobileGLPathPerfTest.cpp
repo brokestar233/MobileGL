@@ -30,6 +30,9 @@ namespace MobileGL::MG_Test::RenderPath::MobileGLPath {
         constexpr int kQuadsPerDraw = 3;
         constexpr int kRegionCount = 192;
         constexpr int kFacesPerRegion = 7;
+        constexpr int kIndirectRegionCount = 32;
+        constexpr int kChunksPerIndirectRegion = 6;
+        constexpr int kFacesPerIndirectChunk = 7;
 
         struct Vertex {
             GLfloat Position[3];
@@ -73,6 +76,27 @@ namespace MobileGL::MG_Test::RenderPath::MobileGLPath {
 
         struct RegionedMeshBuffers {
             std::vector<RegionBatchBuffers> Regions;
+        };
+
+        struct IndirectRegionBuffers {
+            GLuint Vao = 0;
+            GLuint VertexBuffer = 0;
+            GLsizei DrawCount = 0;
+            GLsizeiptr CommandByteOffset = 0;
+        };
+
+        struct RegionedIndirectMeshBuffers {
+            GLuint UniformBuffer = 0;
+            GLuint IndirectBuffer = 0;
+            std::vector<std::array<GLfloat, 4>> ModelOffsets;
+            std::vector<DrawArraysIndirectCommand> Commands;
+            std::vector<IndirectRegionBuffers> Regions;
+        };
+
+        struct InstancedQuadBuffers {
+            GLuint Vao = 0;
+            GLuint VertexBuffer = 0;
+            GLuint InstanceBuffer = 0;
         };
 
         GLuint CreateAlphaCheckerTexture() {
@@ -376,6 +400,208 @@ void main() {
             mesh->Regions.clear();
         }
 
+        RegionedIndirectMeshBuffers CreateRegionedIndirectMeshBuffers(int regionCount, int chunksPerRegion, int facesPerChunk) {
+            RegionedIndirectMeshBuffers mesh{};
+            const int totalChunkCount = regionCount * chunksPerRegion;
+            const int gridWidth = std::max(1, static_cast<int>(std::ceil(std::sqrt(static_cast<float>(totalChunkCount)))));
+            const float chunkStep = 0.14f;
+            const float localQuadWidth = 0.026f;
+            const float localQuadHeight = 0.026f;
+            const float localGap = 0.004f;
+
+            mesh.ModelOffsets.reserve(static_cast<size_t>(totalChunkCount));
+            mesh.Commands.reserve(static_cast<size_t>(totalChunkCount * facesPerChunk));
+            mesh.Regions.reserve(static_cast<size_t>(regionCount));
+
+            glGenBuffers(1, &mesh.UniformBuffer);
+            glBindBuffer(GL_ARRAY_BUFFER, mesh.UniformBuffer);
+            glBufferData(GL_ARRAY_BUFFER,
+                         static_cast<GLsizeiptr>(totalChunkCount * sizeof(mesh.ModelOffsets[0])),
+                         nullptr,
+                         GL_STREAM_DRAW);
+
+            glGenBuffers(1, &mesh.IndirectBuffer);
+            glBindBuffer(GL_DRAW_INDIRECT_BUFFER, mesh.IndirectBuffer);
+            glBufferData(GL_DRAW_INDIRECT_BUFFER,
+                         static_cast<GLsizeiptr>(totalChunkCount * facesPerChunk * sizeof(DrawArraysIndirectCommand)),
+                         nullptr,
+                         GL_STREAM_DRAW);
+            glBindBuffer(GL_DRAW_INDIRECT_BUFFER, 0);
+            glBindBuffer(GL_ARRAY_BUFFER, 0);
+
+            for (int regionIndex = 0; regionIndex < regionCount; ++regionIndex) {
+                IndirectRegionBuffers region{};
+                std::vector<Vertex> vertices;
+                vertices.reserve(static_cast<size_t>(chunksPerRegion * facesPerChunk) * 4u);
+                region.CommandByteOffset = static_cast<GLsizeiptr>(mesh.Commands.size() * sizeof(DrawArraysIndirectCommand));
+
+                for (int chunkIndex = 0; chunkIndex < chunksPerRegion; ++chunkIndex) {
+                    const int globalChunkIndex = regionIndex * chunksPerRegion + chunkIndex;
+                    const int gx = globalChunkIndex % gridWidth;
+                    const int gy = globalChunkIndex / gridWidth;
+
+                    mesh.ModelOffsets.push_back({
+                        -0.92f + static_cast<float>(gx) * chunkStep,
+                        -0.92f + static_cast<float>(gy) * chunkStep,
+                        0.0f,
+                        0.0f,
+                    });
+
+                    for (int faceIndex = 0; faceIndex < facesPerChunk; ++faceIndex) {
+                        const int fx = faceIndex % 3;
+                        const int fy = faceIndex / 3;
+                        const float x = (static_cast<float>(fx) - 1.0f) * (localQuadWidth + localGap);
+                        const float y = (static_cast<float>(fy) - 1.0f) * (localQuadHeight + localGap);
+                        const GLubyte red = static_cast<GLubyte>(96 + ((globalChunkIndex * 19 + faceIndex * 11) % 128));
+                        const GLubyte green = static_cast<GLubyte>(128 + ((globalChunkIndex * 13 + faceIndex * 7) % 96));
+                        const GLubyte blue = static_cast<GLubyte>(160 + ((globalChunkIndex * 17 + faceIndex * 5) % 80));
+
+                        const GLuint first = static_cast<GLuint>(vertices.size());
+                        const Vertex quad[4] = {
+                            {{x, y, 0.0f}, {red, green, blue, 255}, {0.0f, 0.0f}},
+                            {{x, y + localQuadHeight, 0.0f}, {red, green, blue, 255}, {0.0f, 1.0f}},
+                            {{x + localQuadWidth, y + localQuadHeight, 0.0f}, {red, green, blue, 255}, {1.0f, 1.0f}},
+                            {{x + localQuadWidth, y, 0.0f}, {red, green, blue, 255}, {1.0f, 0.0f}},
+                        };
+
+                        vertices.insert(vertices.end(), std::begin(quad), std::end(quad));
+                        mesh.Commands.push_back({
+                            .Count = 4u,
+                            .InstanceCount = 1u,
+                            .First = first,
+                            .BaseInstance = static_cast<GLuint>(globalChunkIndex),
+                        });
+                        ++region.DrawCount;
+                    }
+                }
+
+                glGenVertexArrays(1, &region.Vao);
+                glBindVertexArray(region.Vao);
+
+                glGenBuffers(1, &region.VertexBuffer);
+                glBindBuffer(GL_ARRAY_BUFFER, region.VertexBuffer);
+                glBufferData(GL_ARRAY_BUFFER,
+                             static_cast<GLsizeiptr>(vertices.size() * sizeof(Vertex)),
+                             vertices.data(),
+                             GL_STATIC_DRAW);
+
+                glEnableVertexAttribArray(0);
+                glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex),
+                                      reinterpret_cast<const void*>(offsetof(Vertex, Position)));
+                glEnableVertexAttribArray(1);
+                glVertexAttribPointer(1, 4, GL_UNSIGNED_BYTE, GL_TRUE, sizeof(Vertex),
+                                      reinterpret_cast<const void*>(offsetof(Vertex, Color)));
+                glEnableVertexAttribArray(2);
+                glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex),
+                                      reinterpret_cast<const void*>(offsetof(Vertex, TexCoord)));
+
+                glBindBuffer(GL_ARRAY_BUFFER, mesh.UniformBuffer);
+                glEnableVertexAttribArray(3);
+                glVertexAttribPointer(3, 4, GL_FLOAT, GL_FALSE, static_cast<GLsizei>(sizeof(mesh.ModelOffsets[0])), nullptr);
+                glVertexAttribDivisor(3, 1);
+
+                glBindBuffer(GL_ARRAY_BUFFER, 0);
+                glBindVertexArray(0);
+
+                mesh.Regions.push_back(region);
+            }
+
+            return mesh;
+        }
+
+        void DestroyRegionedIndirectMeshBuffers(RegionedIndirectMeshBuffers* mesh) {
+            if (mesh == nullptr) {
+                return;
+            }
+
+            for (auto& region : mesh->Regions) {
+                if (region.VertexBuffer != 0) {
+                    glDeleteBuffers(1, &region.VertexBuffer);
+                    region.VertexBuffer = 0;
+                }
+                if (region.Vao != 0) {
+                    glDeleteVertexArrays(1, &region.Vao);
+                    region.Vao = 0;
+                }
+            }
+
+            if (mesh->IndirectBuffer != 0) {
+                glDeleteBuffers(1, &mesh->IndirectBuffer);
+                mesh->IndirectBuffer = 0;
+            }
+            if (mesh->UniformBuffer != 0) {
+                glDeleteBuffers(1, &mesh->UniformBuffer);
+                mesh->UniformBuffer = 0;
+            }
+
+            mesh->Regions.clear();
+            mesh->Commands.clear();
+            mesh->ModelOffsets.clear();
+        }
+
+        InstancedQuadBuffers CreateInstancedQuadBuffers() {
+            InstancedQuadBuffers buffers{};
+
+            const Vertex vertices[4] = {
+                {{-0.12f, -0.12f, 0.0f}, {255, 255, 255, 255}, {0.0f, 0.0f}},
+                {{-0.12f,  0.12f, 0.0f}, {255, 255, 255, 255}, {0.0f, 1.0f}},
+                {{ 0.12f, -0.12f, 0.0f}, {255, 255, 255, 255}, {1.0f, 0.0f}},
+                {{ 0.12f,  0.12f, 0.0f}, {255, 255, 255, 255}, {1.0f, 1.0f}},
+            };
+            const GLfloat instanceOffsets[2][4] = {
+                {-0.45f, 0.0f, 0.0f, 0.0f},
+                { 0.45f, 0.0f, 0.0f, 0.0f},
+            };
+
+            glGenVertexArrays(1, &buffers.Vao);
+            glBindVertexArray(buffers.Vao);
+
+            glGenBuffers(1, &buffers.VertexBuffer);
+            glBindBuffer(GL_ARRAY_BUFFER, buffers.VertexBuffer);
+            glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
+
+            glEnableVertexAttribArray(0);
+            glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex),
+                                  reinterpret_cast<const void*>(offsetof(Vertex, Position)));
+            glEnableVertexAttribArray(1);
+            glVertexAttribPointer(1, 4, GL_UNSIGNED_BYTE, GL_TRUE, sizeof(Vertex),
+                                  reinterpret_cast<const void*>(offsetof(Vertex, Color)));
+            glEnableVertexAttribArray(2);
+            glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex),
+                                  reinterpret_cast<const void*>(offsetof(Vertex, TexCoord)));
+
+            glGenBuffers(1, &buffers.InstanceBuffer);
+            glBindBuffer(GL_ARRAY_BUFFER, buffers.InstanceBuffer);
+            glBufferData(GL_ARRAY_BUFFER, sizeof(instanceOffsets), instanceOffsets, GL_STATIC_DRAW);
+            glEnableVertexAttribArray(3);
+            glVertexAttribPointer(3, 4, GL_FLOAT, GL_FALSE, sizeof(instanceOffsets[0]), nullptr);
+            glVertexAttribDivisor(3, 1);
+
+            glBindBuffer(GL_ARRAY_BUFFER, 0);
+            glBindVertexArray(0);
+
+            return buffers;
+        }
+
+        void DestroyInstancedQuadBuffers(InstancedQuadBuffers* buffers) {
+            if (buffers == nullptr) {
+                return;
+            }
+
+            if (buffers->InstanceBuffer != 0) {
+                glDeleteBuffers(1, &buffers->InstanceBuffer);
+                buffers->InstanceBuffer = 0;
+            }
+            if (buffers->VertexBuffer != 0) {
+                glDeleteBuffers(1, &buffers->VertexBuffer);
+                buffers->VertexBuffer = 0;
+            }
+            if (buffers->Vao != 0) {
+                glDeleteVertexArrays(1, &buffers->Vao);
+                buffers->Vao = 0;
+            }
+        }
+
         PathPerfResult MeasureScenario(const OffscreenHarness& harness, const char* label, int drawsPerFrame,
                                        const std::function<void()>& frameFn) {
             const double frameNanoseconds = harness.MeasureFrameNanoseconds(frameFn, kWarmupFrames, kTimedFrames);
@@ -401,9 +627,13 @@ void main() {
             ASSERT_NE(Program.Program, 0u);
             Mesh = CreateMeshBuffers(kDrawCount, kQuadsPerDraw);
             RegionedMesh = CreateRegionedMeshBuffers(kRegionCount, kFacesPerRegion);
+            RegionedIndirectMesh = CreateRegionedIndirectMeshBuffers(kIndirectRegionCount,
+                                                                     kChunksPerIndirectRegion,
+                                                                     kFacesPerIndirectChunk);
         }
 
         static void TearDownTestSuite() {
+            DestroyRegionedIndirectMeshBuffers(&RegionedIndirectMesh);
             DestroyRegionedMeshBuffers(&RegionedMesh);
             DestroyMeshBuffers(&Mesh);
             if (Program.Program != 0) {
@@ -431,6 +661,7 @@ void main() {
         static ProgramBundle Program;
         static MeshBuffers Mesh;
         static RegionedMeshBuffers RegionedMesh;
+        static RegionedIndirectMeshBuffers RegionedIndirectMesh;
     };
 
     OffscreenHarness MobileGLPathPerfFixture::HarnessInstance;
@@ -439,6 +670,7 @@ void main() {
     ProgramBundle MobileGLPathPerfFixture::Program;
     MeshBuffers MobileGLPathPerfFixture::Mesh;
     RegionedMeshBuffers MobileGLPathPerfFixture::RegionedMesh;
+    RegionedIndirectMeshBuffers MobileGLPathPerfFixture::RegionedIndirectMesh;
 
     TEST_F(MobileGLPathPerfFixture, AngelicaWorldOneshotMultiDrawArraysSmokeAndPerf) {
         const auto frameFn = [&]() {
@@ -525,5 +757,80 @@ void main() {
                                             kRegionCount * kFacesPerRegion,
                                             frameFn);
         EXPECT_GT(result.FrameNanoseconds, 0.0);
+    }
+
+    TEST_F(MobileGLPathPerfFixture, AngelicaWorldRegionedMultiDrawIndirectSmokeAndPerf) {
+        if (!SupportsMultiDrawIndirect()) {
+            GTEST_SKIP() << "glMultiDrawArraysIndirect is not available on this MobileGL path";
+        }
+
+        const auto frameFn = [&]() {
+            ASSERT_TRUE(HarnessInstance.Clear(0.06f, 0.10f, 0.16f, 1.0f, &Error)) << Error;
+            glUseProgram(Program.Program);
+            if (Program.SamplerLocation >= 0) {
+                glUniform1i(Program.SamplerLocation, 0);
+            }
+            glActiveTexture(GL_TEXTURE0);
+            glBindTexture(GL_TEXTURE_2D, Texture);
+
+            glBindBuffer(GL_ARRAY_BUFFER, RegionedIndirectMesh.UniformBuffer);
+            glBufferData(GL_ARRAY_BUFFER,
+                         static_cast<GLsizeiptr>(RegionedIndirectMesh.ModelOffsets.size() * sizeof(RegionedIndirectMesh.ModelOffsets[0])),
+                         RegionedIndirectMesh.ModelOffsets.data(),
+                         GL_STREAM_DRAW);
+            glBindBuffer(GL_ARRAY_BUFFER, 0);
+
+            glBindBuffer(GL_DRAW_INDIRECT_BUFFER, RegionedIndirectMesh.IndirectBuffer);
+            glBufferData(GL_DRAW_INDIRECT_BUFFER,
+                         static_cast<GLsizeiptr>(RegionedIndirectMesh.Commands.size() * sizeof(DrawArraysIndirectCommand)),
+                         RegionedIndirectMesh.Commands.data(),
+                         GL_STREAM_DRAW);
+
+            for (const auto& region : RegionedIndirectMesh.Regions) {
+                glBindVertexArray(region.Vao);
+                glMultiDrawArraysIndirect(GL_QUADS,
+                                          reinterpret_cast<const void*>(region.CommandByteOffset),
+                                          region.DrawCount,
+                                          0);
+                glBindVertexArray(0);
+            }
+
+            glBindBuffer(GL_DRAW_INDIRECT_BUFFER, 0);
+            glUseProgram(0);
+        };
+
+        frameFn();
+        HarnessInstance.Finish();
+        EXPECT_TRUE(PixelHasVisibleColor(HarnessInstance.ReadPixel(HarnessInstance.GetWidth() / 2, HarnessInstance.GetHeight() / 2)));
+        const auto result = MeasureScenario(HarnessInstance,
+                                            "AngelicaWorldRegionedMultiDrawIndirect",
+                                            kIndirectRegionCount * kChunksPerIndirectRegion * kFacesPerIndirectChunk,
+                                            frameFn);
+        EXPECT_GT(result.FrameNanoseconds, 0.0);
+    }
+
+    TEST_F(MobileGLPathPerfFixture, DrawArraysInstancedBaseInstanceUsesInstancedAttributeOffset) {
+        auto quad = CreateInstancedQuadBuffers();
+
+        ASSERT_TRUE(HarnessInstance.Clear(0.06f, 0.10f, 0.16f, 1.0f, &Error)) << Error;
+        glUseProgram(Program.Program);
+        if (Program.SamplerLocation >= 0) {
+            glUniform1i(Program.SamplerLocation, 0);
+        }
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, Texture);
+        glBindVertexArray(quad.Vao);
+
+        glDrawArraysInstancedBaseInstance(GL_TRIANGLE_STRIP, 0, 4, 1, 0);
+        glDrawArraysInstancedBaseInstance(GL_TRIANGLE_STRIP, 0, 4, 1, 1);
+
+        glBindVertexArray(0);
+        glUseProgram(0);
+        HarnessInstance.Finish();
+
+        EXPECT_TRUE(PixelHasVisibleColor(HarnessInstance.ReadPixel(HarnessInstance.GetWidth() / 4, HarnessInstance.GetHeight() / 2)));
+        EXPECT_TRUE(PixelHasVisibleColor(HarnessInstance.ReadPixel((HarnessInstance.GetWidth() * 3) / 4, HarnessInstance.GetHeight() / 2)));
+
+        DestroyInstancedQuadBuffers(&quad);
     }
 } // namespace MobileGL::MG_Test::RenderPath::MobileGLPath
