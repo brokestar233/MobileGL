@@ -2133,6 +2133,11 @@ namespace MobileGL::MG_Backend::DirectGLES {
             g_GLESFuncs.glUniform1i(activeVariant->BaseInstanceUniformLocation, static_cast<GLint>(baseInstance));
         }
 
+        Bool BackendProgramObjectImpl::UsesBaseInstanceUniform() const {
+            const auto* activeVariant = GetActiveVariant();
+            return activeVariant != nullptr && activeVariant->BaseInstanceUniformLocation >= 0;
+        }
+
         void BackendProgramObjectImpl::SetAlphaTestRef(Float ref) const {
             const auto* activeVariant = GetActiveVariant();
             if (activeVariant && activeVariant->AlphaTestRefUniformLocation >= 0) {

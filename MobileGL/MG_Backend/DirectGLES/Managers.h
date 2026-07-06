@@ -299,6 +299,7 @@ namespace MobileGL::MG_Backend::DirectGLES {
             void Use() const;
             void SetBaseInstance(Uint32 baseInstance) const;
             void SetAlphaTestRef(Float ref) const;
+            Bool UsesBaseInstanceUniform() const;
             Uint GetBackendProgramId() const;
             Uint GetBackendGlobalUBOId() const;
             Uint32 GetSnormFallbackClampOutputMask() const { return m_snormFallbackClampOutputMask; }

@@ -1058,6 +1058,20 @@ namespace MobileGL::MG_Backend::DirectGLES {
         }
     }
 
+    Bool CurrentProgramUsesBaseInstanceEmulation() {
+        const auto& currentProgram = MG_State::pGLContext->GetCurrentProgram();
+        if (!currentProgram || !currentProgram->GetLinkStatus()) {
+            return false;
+        }
+
+        const auto& backendProgramIt = PrgramImpl::g_backendProgramObjects.find(currentProgram.get());
+        if (backendProgramIt == PrgramImpl::g_backendProgramObjects.end()) {
+            return false;
+        }
+
+        return backendProgramIt->second->UsesBaseInstanceUniform();
+    }
+
     void PrepareForCompute(Bool includeDispatchIndirectBuffer) {
 #ifdef TRACY_ENABLE
         ZoneScopedC(TRACY_ZONECOLOR_BACKEND);
@@ -1228,6 +1242,7 @@ namespace MobileGL::MG_Backend::DirectGLES {
 
         DrawSyncBit syncBit = DrawSyncBit::IndexBuffer | DrawSyncBit::IndirectBuffer | DrawSyncBit::Instancing;
         PrepareForDraw(syncBit);
+        const Bool needsBaseInstanceEmulation = CurrentProgramUsesBaseInstanceEmulation();
 
         const SizeT indexSize = MG_Util::GetGLTypeSize(type);
         if (indexSize == 0) {
@@ -1249,13 +1264,17 @@ namespace MobileGL::MG_Backend::DirectGLES {
             if (cmd.count == 0 || cmd.instanceCount == 0) {
                 continue;
             }
-            SetCurrentBaseInstance(cmd.baseInstance);
+            if (needsBaseInstanceEmulation) {
+                SetCurrentBaseInstance(cmd.baseInstance);
+            }
             const auto indexByteOffset = static_cast<SizeT>(cmd.firstIndex) * indexSize;
             g_GLESFuncs.glDrawElementsInstancedBaseVertex(
                 mode, static_cast<GLsizei>(cmd.count), type, reinterpret_cast<const GLvoid*>(indexByteOffset),
                 static_cast<GLsizei>(cmd.instanceCount), cmd.baseVertex);
         }
-        SetCurrentBaseInstance(0);
+        if (needsBaseInstanceEmulation) {
+            SetCurrentBaseInstance(0);
+        }
     }
 
     void MultiDrawElementsIndirectCount(GLenum mode, GLenum type, const void* indirect, GLintptr drawcount,
@@ -1277,6 +1296,7 @@ namespace MobileGL::MG_Backend::DirectGLES {
 
         DrawSyncBit syncBit = DrawSyncBit::IndexBuffer | DrawSyncBit::IndirectBuffer | DrawSyncBit::Instancing;
         PrepareForDraw(syncBit);
+        const Bool needsBaseInstanceEmulation = CurrentProgramUsesBaseInstanceEmulation();
 
         const SizeT indexSize = MG_Util::GetGLTypeSize(type);
         if (indexSize == 0) {
@@ -1321,13 +1341,17 @@ namespace MobileGL::MG_Backend::DirectGLES {
             if (cmd.count == 0 || cmd.instanceCount == 0) {
                 continue;
             }
-            SetCurrentBaseInstance(cmd.baseInstance);
+            if (needsBaseInstanceEmulation) {
+                SetCurrentBaseInstance(cmd.baseInstance);
+            }
             const auto indexByteOffset = static_cast<SizeT>(cmd.firstIndex) * indexSize;
             g_GLESFuncs.glDrawElementsInstancedBaseVertex(
                 mode, static_cast<GLsizei>(cmd.count), type, reinterpret_cast<const GLvoid*>(indexByteOffset),
                 static_cast<GLsizei>(cmd.instanceCount), cmd.baseVertex);
         }
-        SetCurrentBaseInstance(0);
+        if (needsBaseInstanceEmulation) {
+            SetCurrentBaseInstance(0);
+        }
     }
 
     void MultiDrawArraysIndirect(GLenum mode, const void* indirect, GLsizei drawcount, GLsizei stride) {
@@ -1348,6 +1372,7 @@ namespace MobileGL::MG_Backend::DirectGLES {
 
         DrawSyncBit syncBit = DrawSyncBit::IndirectBuffer | DrawSyncBit::Instancing;
         PrepareForDraw(syncBit);
+        const Bool needsBaseInstanceEmulation = CurrentProgramUsesBaseInstanceEmulation();
 
         const auto* commandBytes = ResolveIndirectCommandBytes(
             indirect,
@@ -1363,12 +1388,16 @@ namespace MobileGL::MG_Backend::DirectGLES {
             if (cmd.count == 0 || cmd.instanceCount == 0) {
                 continue;
             }
-            SetCurrentBaseInstance(cmd.baseInstance);
+            if (needsBaseInstanceEmulation) {
+                SetCurrentBaseInstance(cmd.baseInstance);
+            }
             g_GLESFuncs.glDrawArraysInstanced(
                 mode, static_cast<GLint>(cmd.first), static_cast<GLsizei>(cmd.count),
                 static_cast<GLsizei>(cmd.instanceCount));
         }
-        SetCurrentBaseInstance(0);
+        if (needsBaseInstanceEmulation) {
+            SetCurrentBaseInstance(0);
+        }
     }
 
     void DrawRangeElementsBaseVertex(GLenum mode, GLuint start, GLuint end, GLsizei count, GLenum type,
@@ -1388,9 +1417,14 @@ namespace MobileGL::MG_Backend::DirectGLES {
                                                      GLsizei instancecount, GLint basevertex, GLuint baseinstance) {
         DrawSyncBit syncBit = DrawSyncBit::IndexBuffer | DrawSyncBit::Instancing;
         PrepareForDraw(syncBit);
-        SetCurrentBaseInstance(baseinstance);
+        const Bool needsBaseInstanceEmulation = CurrentProgramUsesBaseInstanceEmulation();
+        if (needsBaseInstanceEmulation) {
+            SetCurrentBaseInstance(baseinstance);
+        }
         g_GLESFuncs.glDrawElementsInstancedBaseVertex(mode, count, type, indices, instancecount, basevertex);
-        SetCurrentBaseInstance(0);
+        if (needsBaseInstanceEmulation) {
+            SetCurrentBaseInstance(0);
+        }
     }
 
     void DrawElementsInstancedBaseVertex(GLenum mode, GLsizei count, GLenum type, const void* indices,
@@ -1404,9 +1438,14 @@ namespace MobileGL::MG_Backend::DirectGLES {
                                            GLsizei instancecount, GLuint baseinstance) {
         DrawSyncBit syncBit = DrawSyncBit::IndexBuffer | DrawSyncBit::Instancing;
         PrepareForDraw(syncBit);
-        SetCurrentBaseInstance(baseinstance);
+        const Bool needsBaseInstanceEmulation = CurrentProgramUsesBaseInstanceEmulation();
+        if (needsBaseInstanceEmulation) {
+            SetCurrentBaseInstance(baseinstance);
+        }
         g_GLESFuncs.glDrawElementsInstanced(mode, count, type, indices, instancecount);
-        SetCurrentBaseInstance(0);
+        if (needsBaseInstanceEmulation) {
+            SetCurrentBaseInstance(0);
+        }
     }
 
     void DrawElementsInstanced(GLenum mode, GLsizei count, GLenum type, const void* indices, GLsizei instancecount) {
@@ -1418,6 +1457,7 @@ namespace MobileGL::MG_Backend::DirectGLES {
     void DrawElementsIndirect(GLenum mode, GLenum type, const void* indirect) {
         DrawSyncBit syncBit = DrawSyncBit::IndexBuffer | DrawSyncBit::IndirectBuffer | DrawSyncBit::Instancing;
         PrepareForDraw(syncBit);
+        const Bool needsBaseInstanceEmulation = CurrentProgramUsesBaseInstanceEmulation();
 
         const SizeT indexSize = MG_Util::GetGLTypeSize(type);
         if (indexSize == 0) {
@@ -1437,21 +1477,30 @@ namespace MobileGL::MG_Backend::DirectGLES {
             return;
         }
 
-        SetCurrentBaseInstance(cmd.baseInstance);
+        if (needsBaseInstanceEmulation) {
+            SetCurrentBaseInstance(cmd.baseInstance);
+        }
         const auto indexByteOffset = static_cast<SizeT>(cmd.firstIndex) * indexSize;
         g_GLESFuncs.glDrawElementsInstancedBaseVertex(
             mode, static_cast<GLsizei>(cmd.count), type, reinterpret_cast<const GLvoid*>(indexByteOffset),
             static_cast<GLsizei>(cmd.instanceCount), cmd.baseVertex);
-        SetCurrentBaseInstance(0);
+        if (needsBaseInstanceEmulation) {
+            SetCurrentBaseInstance(0);
+        }
     }
 
     void DrawArraysInstancedBaseInstance(GLenum mode, GLint first, GLsizei count, GLsizei instancecount,
                                          GLuint baseinstance) {
         DrawSyncBit syncBit = DrawSyncBit::Instancing;
         PrepareForDraw(syncBit);
-        SetCurrentBaseInstance(baseinstance);
+        const Bool needsBaseInstanceEmulation = CurrentProgramUsesBaseInstanceEmulation();
+        if (needsBaseInstanceEmulation) {
+            SetCurrentBaseInstance(baseinstance);
+        }
         g_GLESFuncs.glDrawArraysInstanced(mode, first, count, instancecount);
-        SetCurrentBaseInstance(0);
+        if (needsBaseInstanceEmulation) {
+            SetCurrentBaseInstance(0);
+        }
     }
 
     void DrawArraysInstanced(GLenum mode, GLint first, GLsizei count, GLsizei instancecount) {
@@ -1463,6 +1512,7 @@ namespace MobileGL::MG_Backend::DirectGLES {
     void DrawArraysIndirect(GLenum mode, const void* indirect) {
         DrawSyncBit syncBit = DrawSyncBit::IndirectBuffer | DrawSyncBit::Instancing;
         PrepareForDraw(syncBit);
+        const Bool needsBaseInstanceEmulation = CurrentProgramUsesBaseInstanceEmulation();
 
         const auto* commandBytes =
             ResolveIndirectCommandBytes(indirect, sizeof(DrawArraysIndirectCommand), "DrawArraysIndirect");
@@ -1476,11 +1526,15 @@ namespace MobileGL::MG_Backend::DirectGLES {
             return;
         }
 
-        SetCurrentBaseInstance(cmd.baseInstance);
+        if (needsBaseInstanceEmulation) {
+            SetCurrentBaseInstance(cmd.baseInstance);
+        }
         g_GLESFuncs.glDrawArraysInstanced(
             mode, static_cast<GLint>(cmd.first), static_cast<GLsizei>(cmd.count),
             static_cast<GLsizei>(cmd.instanceCount));
-        SetCurrentBaseInstance(0);
+        if (needsBaseInstanceEmulation) {
+            SetCurrentBaseInstance(0);
+        }
     }
 
     void BlitFramebuffer(GLint srcX0, GLint srcY0, GLint srcX1, GLint srcY1, GLint dstX0, GLint dstY0, GLint dstX1,
