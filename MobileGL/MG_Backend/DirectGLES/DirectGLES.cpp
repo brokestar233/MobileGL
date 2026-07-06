@@ -875,7 +875,7 @@ namespace MobileGL::MG_Backend::DirectGLES {
                     backendVAOIt->second->Bind();
                 }
             } else {
-                VertexArrayImpl::BindBackendVertexArray(0);
+                g_GLESFuncs.glBindVertexArray(0);
             }
         }
 
@@ -3580,7 +3580,6 @@ namespace MobileGL::MG_Backend::DirectGLES {
         BufferImpl::g_boundVertexBufferObject = nullptr;
 
         VertexArrayImpl::g_backendVertexArrayObjects = {};
-        VertexArrayImpl::InvalidateBoundBackendVertexArray();
 
         TextureImpl::g_backendTextureObjects = {};
         TextureImpl::g_activeTextureUnit = 0;
