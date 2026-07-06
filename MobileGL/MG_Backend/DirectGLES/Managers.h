@@ -138,6 +138,9 @@ namespace MobileGL::MG_Backend::DirectGLES {
     } // namespace BufferImpl
 
     namespace VertexArrayImpl {
+        void BindBackendVertexArray(Uint backendVAOId);
+        void InvalidateBoundBackendVertexArray();
+
         class BackendVertexArrayObject {
         public:
             BackendVertexArrayObject();

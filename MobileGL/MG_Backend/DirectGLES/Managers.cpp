@@ -295,6 +295,8 @@ namespace MobileGL::MG_Backend::DirectGLES {
 
     namespace VertexArrayImpl {
         namespace {
+            constexpr Uint kInvalidBackendVertexArrayId = std::numeric_limits<Uint>::max();
+
             SizeT GetDataTypeSize(DataType type) {
                 switch (type) {
                 case DataType::Int8:
@@ -317,6 +319,21 @@ namespace MobileGL::MG_Backend::DirectGLES {
             }
         } // namespace
 
+        Uint g_boundBackendVertexArrayId = kInvalidBackendVertexArrayId;
+
+        void BindBackendVertexArray(Uint backendVAOId) {
+            if (g_boundBackendVertexArrayId == backendVAOId) {
+                return;
+            }
+
+            g_GLESFuncs.glBindVertexArray(backendVAOId);
+            g_boundBackendVertexArrayId = backendVAOId;
+        }
+
+        void InvalidateBoundBackendVertexArray() {
+            g_boundBackendVertexArrayId = kInvalidBackendVertexArrayId;
+        }
+
         BackendVertexArrayObject::BackendVertexArrayObject() {
 #ifdef TRACY_ENABLE
             ZoneScopedC(TRACY_ZONECOLOR_BACKEND);
@@ -333,6 +350,9 @@ namespace MobileGL::MG_Backend::DirectGLES {
 
         BackendVertexArrayObject::~BackendVertexArrayObject() {
             if (m_backendVAOId != 0) {
+                if (g_boundBackendVertexArrayId == m_backendVAOId) {
+                    InvalidateBoundBackendVertexArray();
+                }
                 g_GLESFuncs.glDeleteVertexArrays(1, &m_backendVAOId);
                 m_backendVAOId = 0;
             }
@@ -348,7 +368,7 @@ namespace MobileGL::MG_Backend::DirectGLES {
 #ifdef TRACY_ENABLE
             ZoneScopedC(TRACY_ZONECOLOR_BACKEND);
 #endif
-            g_GLESFuncs.glBindVertexArray(m_backendVAOId);
+            BindBackendVertexArray(m_backendVAOId);
         }
 
         inline Bool BindAttributeBuffer(const MG_State::GLState::VertexAttribute& attrib) {
