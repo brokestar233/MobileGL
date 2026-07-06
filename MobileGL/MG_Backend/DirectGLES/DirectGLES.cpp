@@ -995,10 +995,9 @@ namespace MobileGL::MG_Backend::DirectGLES {
                     ZoneScopedNC("BindSamplerUnit", TRACY_ZONECOLOR_BACKEND);
 #endif
                     // Sampler unit binding
-                    auto maxUniformLoc = currentProgram->GetMaxUniformLocation();
-                    for (Uint loc = 0; loc <= maxUniformLoc; ++loc) {
+                    const auto& samplerUniformLocations = currentProgram->GetSamplerUniformLocations();
+                    for (const Uint loc : samplerUniformLocations) {
                         auto& name = currentProgram->GetUniformName(loc);
-                        if (name.empty()) continue;
                         auto unit = currentProgram->GetUniformSamplerOrImageUnitIndex(loc);
                         if (unit == -1) continue;
                         auto locAtBackend = g_GLESFuncs.glGetUniformLocation(

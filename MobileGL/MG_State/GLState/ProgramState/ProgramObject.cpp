@@ -129,6 +129,7 @@ namespace MobileGL::MG_State::GLState {
         m_uniformLocations.clear();
         m_uniformIndexInTProgram.clear();
         m_uniformSamplerOrImageUnitIndex.clear();
+        m_samplerUniformLocations.clear();
         m_explicitOpaqueUniformBindings.clear();
         m_uniformBlockIndexByName.clear();
         m_uniformBlockBinding.clear();
@@ -448,8 +449,10 @@ namespace MobileGL::MG_State::GLState {
             const Int locationSpan = std::max(1, uniform.size);
             for (Int element = 0; element < locationSpan &&
                                   location + element < m_uniformSamplerOrImageUnitIndex.size(); ++element) {
-                m_uniformSamplerOrImageUnitIndex[location + element] =
+                const Uint locationElement = location + element;
+                m_uniformSamplerOrImageUnitIndex[locationElement] =
                     initialUnit + (explicitBinding != m_explicitOpaqueUniformBindings.end() ? element : 0);
+                m_samplerUniformLocations.push_back(locationElement);
             }
             MGLOG_D("ProgramObject %u: Reflection - opaque uniform '%s' locations=%u..%u initialUnit=%d",
                     m_externalIndex, uniform.name.c_str(), location, location + locationSpan - 1, initialUnit);

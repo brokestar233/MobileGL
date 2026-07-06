@@ -219,6 +219,7 @@ namespace MobileGL::MG_State::GLState {
             }
             return m_uniformSamplerOrImageUnitIndex[location];
         }
+        const Vector<Uint>& GetSamplerUniformLocations() const { return m_samplerUniformLocations; }
 
         Bool GetDeleteStatus() const { return m_deleteStatus; }
         Bool GetLinkStatus() const { return m_linkStatus; }
@@ -314,6 +315,7 @@ namespace MobileGL::MG_State::GLState {
         Vector<Int> m_uniformIndexInTProgram;
         // ditto. Will be set at glUniform1i
         Vector<Int> m_uniformSamplerOrImageUnitIndex;
+        Vector<Uint> m_samplerUniformLocations;
         UnorderedMap<String, Uint> m_explicitOpaqueUniformBindings;
 
         // Ordered by uniform block index
