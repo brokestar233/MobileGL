@@ -563,10 +563,16 @@ namespace MobileGL::MG_Backend::DirectGLES {
 
             Bind();
 
+            const auto& currentProgram = MG_State::pGLContext->GetCurrentProgram();
+            const Uint32 activeAttributeMask = currentProgram ? currentProgram->GetActiveAttributeLocationMask()
+                                                              : std::numeric_limits<Uint32>::max();
             const auto& allAttributes = stateVAOObject->GetAllAttributes();
             for (Uint attribIndex = 0; attribIndex < allAttributes.size(); ++attribIndex) {
                 const auto& attrib = allAttributes[attribIndex];
                 if (attrib.Enabled) {
+                    continue;
+                }
+                if (attribIndex < 32 && (activeAttributeMask & (1u << attribIndex)) == 0) {
                     continue;
                 }
 
